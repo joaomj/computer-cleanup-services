@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+python3 -m unittest discover -s "$ROOT_DIR/tests" -p 'test_*.py' -v
+python3 -m py_compile "$ROOT_DIR"/src/*.py
+printf 'Verification passed.\n'

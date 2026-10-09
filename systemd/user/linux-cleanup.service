@@ -1,0 +1,12 @@
+[Unit]
+Description=Daily automatic Linux package upgrades
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/libexec/linux-cleanup-service/python3 %h/.local/libexec/linux-cleanup-service/maintenance.py --updates-only
+Environment="XDG_CONFIG_HOME=CONFIG_ROOT_PLACEHOLDER"
+TimeoutStartSec=15min
+PrivateTmp=false
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7

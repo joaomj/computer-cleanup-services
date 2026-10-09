@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ ! -t 0 || ! -t 1 ]]; then
+    printf 'Uninstall requires approval in an interactive terminal. Nothing removed.\n' >&2
+    exit 1
+fi
+RESPONSE="n"
+read -r -p 'Remove the cleanup service, installed code, and shell hook? [y/N] ' RESPONSE || RESPONSE="n"
+case "$RESPONSE" in
+    [Yy]|[Yy][Ee][Ss]) ;;
+    *) printf 'Uninstall declined. Nothing removed.\n'; exit 0 ;;
+esac
+
+case "$(uname -s)" in
+    Darwin)
+        SERVICE_NAME="macos-cleanup-service"
+        PLIST="$HOME/Library/LaunchAgents/com.user.macos-cleanup-service.plist"
+        if [ -f "$PLIST" ]; then
+            launchctl unload "$PLIST"
+            rm -f "$PLIST"
+        fi
+        INIT_FILENAME="zshrc-init.sh"
+        ;;
+    Linux)
+        SERVICE_NAME="linux-cleanup-service"
+        systemctl --user stop linux-cleanup.service
+        rm -f "${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/linux-cleanup.service"
+        systemctl --user daemon-reload
+        if command -v sudo >/dev/null 2>&1; then
+            sudo rm -f /etc/sudoers.d/90-linux-cleanup-service
+        fi
+        INIT_FILENAME="bashrc-init.sh"
+        ;;
+    *) printf 'Unsupported platform: %s\n' "$(uname -s)" >&2; exit 1 ;;
+esac
+
+LIBEXEC_DIR="$HOME/.local/libexec/$SERVICE_NAME"
+PYTHON_BIN="$LIBEXEC_DIR/python3"
+SHELL_RC=""
+case "$(basename "${SHELL:-/bin/sh}")" in
+    zsh) SHELL_RC="$HOME/.zshrc" ;;
+    bash) SHELL_RC="$HOME/.bashrc" ;;
+esac
+if [ -n "$SHELL_RC" ] && [ -f "$SHELL_RC" ]; then
+    "$PYTHON_BIN" - "$SHELL_RC" "$SERVICE_NAME" "$INIT_FILENAME" <<'PYHOOK'
+import sys
+from pathlib import Path
+path = Path(sys.argv[1])
+service, init = sys.argv[2:]
+marker = f"# {service}"
+hook = f'if [ -f "$HOME/.local/libexec/{service}/{init}" ]; then . "$HOME/.local/libexec/{service}/{init}"; fi'
+lines = [line for line in path.read_text().splitlines() if line not in {marker, hook}]
+path.write_text("\n".join(lines) + "\n")
+PYHOOK
+fi
+rm -rf "$LIBEXEC_DIR"
+printf 'Removed %s code and unit. State and configuration remain.\n' "$SERVICE_NAME"

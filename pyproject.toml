@@ -1,0 +1,9 @@
+[project]
+name = "computer-cleanup-services"
+version = "0.1.0"
+description = "Daily storage maintenance services for Linux and macOS"
+requires-python = ">=3.10"
+license = "MIT"
+
+[tool.uv]
+package = false

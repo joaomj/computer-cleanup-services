@@ -1,0 +1,18 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+runtime/
+backups/
+status/
+
+# Machine configuration and generated files.
+.DS_Store
+.ruff_cache/
+.coverage
+*.log
+*.db
+*.db-*
+*.env
+.env.*
+environment

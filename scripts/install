@@ -1,0 +1,145 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+
+if [[ "$(id -u)" == "0" ]]; then
+    printf 'Run this installer as your regular user, not root.\n' >&2
+    exit 1
+fi
+PYTHON_BIN="$(command -v python3)"
+"$PYTHON_BIN" -c 'import sys; sys.exit("Python 3.10 or later is required; install a supported Python and put it on PATH") if sys.version_info < (3, 10) else None'
+
+is_macos() { [[ "$(uname -s)" == "Darwin" ]]; }
+is_linux() { [[ "$(uname -s)" == "Linux" ]]; }
+
+if is_macos; then
+    SERVICE_NAME="macos-cleanup-service"
+    CONFIG_ROOT="${XDG_CONFIG_HOME:-$HOME/Library/Application Support}"
+    SERVICE_DIR="$HOME/Library/LaunchAgents"
+    STATE_DIR="$CONFIG_ROOT/$SERVICE_NAME"
+    INIT_FILENAME="zshrc-init.sh"
+elif is_linux; then
+    SERVICE_NAME="linux-cleanup-service"
+    CONFIG_ROOT="${XDG_CONFIG_HOME:-$HOME/.config}"
+    SERVICE_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
+    STATE_DIR="$CONFIG_ROOT/$SERVICE_NAME"
+    INIT_FILENAME="bashrc-init.sh"
+else
+    printf 'Unsupported platform: %s\n' "$(uname -s)"
+    exit 1
+fi
+
+PYTHON_BIN="$("$PYTHON_BIN" -c 'import os, sys; print(os.path.realpath(sys.executable))')"
+LIBEXEC_DIR="$HOME/.local/libexec/$SERVICE_NAME"
+CONFIG_DIR="$CONFIG_ROOT/$SERVICE_NAME"
+
+install -d -m 700 "$LIBEXEC_DIR" "$CONFIG_DIR" "$STATE_DIR" "$SERVICE_DIR"
+ln -sfn "$PYTHON_BIN" "$LIBEXEC_DIR/python3"
+install -m 755 "$ROOT_DIR/src/config.py" "$LIBEXEC_DIR/config.py"
+install -m 755 "$ROOT_DIR/src/common.py" "$LIBEXEC_DIR/common.py"
+install -m 755 "$ROOT_DIR/src/cache_cleanup.py" "$LIBEXEC_DIR/cache_cleanup.py"
+install -m 755 "$ROOT_DIR/src/runtime_update.py" "$LIBEXEC_DIR/runtime_update.py"
+install -m 755 "$ROOT_DIR/src/cleanup.py" "$LIBEXEC_DIR/cleanup.py"
+install -m 755 "$ROOT_DIR/src/status.py" "$LIBEXEC_DIR/status.py"
+install -m 755 "$ROOT_DIR/src/state.py" "$LIBEXEC_DIR/state.py"
+install -m 755 "$ROOT_DIR/src/maintenance.py" "$LIBEXEC_DIR/maintenance.py"
+install -m 755 "$ROOT_DIR/src/configure.py" "$LIBEXEC_DIR/configure.py"
+
+if [ ! -e "$CONFIG_DIR/environment" ]; then
+    ENV_TEMPLATE="$ROOT_DIR/config/default.conf"
+    if is_macos; then
+        ENV_TEMPLATE="$ROOT_DIR/config/macos.conf"
+    fi
+    install -m 600 "$ENV_TEMPLATE" "$CONFIG_DIR/environment"
+fi
+
+if [[ -t 0 && -t 1 ]]; then
+    SELECT_ACTIONS="n"
+    read -r -p 'Choose optional application and cleanup actions now? [y/N] ' SELECT_ACTIONS || SELECT_ACTIONS="n"
+    case "$SELECT_ACTIONS" in
+        [Yy]|[Yy][Ee][Ss]) "$PYTHON_BIN" "$LIBEXEC_DIR/configure.py" ;;
+    esac
+fi
+
+detect_shell_rc() {
+    local shell_name
+    shell_name="$(basename "${SHELL:-/bin/sh}")"
+    case "$shell_name" in
+        zsh)  printf '%s/.zshrc' "$HOME" ;;
+        bash) printf '%s/.bashrc' "$HOME" ;;
+        *)    printf '' ;;
+    esac
+}
+
+SHELL_RC="$(detect_shell_rc)"
+if [ -n "$SHELL_RC" ]; then
+    "$PYTHON_BIN" - "$SHELL_RC" "$SERVICE_NAME" "$INIT_FILENAME" <<'PYHOOK'
+import sys
+from pathlib import Path
+path = Path(sys.argv[1])
+service, init = sys.argv[2:]
+marker = f"# {service}"
+hook = f'if [ -f "$HOME/.local/libexec/{service}/{init}" ]; then . "$HOME/.local/libexec/{service}/{init}"; fi'
+text = path.read_text() if path.exists() else ""
+lines = [line for line in text.splitlines() if line not in {marker, hook}]
+path.write_text("\n".join(lines) + f"\n{marker}\n{hook}\n")
+PYHOOK
+fi
+
+if is_macos; then
+    install -m 755 "$ROOT_DIR/macos/shell/$INIT_FILENAME" "$LIBEXEC_DIR/$INIT_FILENAME"
+    PLIST="$SERVICE_DIR/com.user.macos-cleanup-service.plist"
+    # The launchd job runs with a minimal PATH. Detect this machine's
+    # authoritative Homebrew prefix instead of assuming /opt/homebrew.
+    LAUNCHD_PATH_EXTRA="/usr/local/bin:/opt/homebrew/bin"
+    if command -v brew >/dev/null 2>&1; then
+        BREW_DIR="$(dirname "$(command -v brew)")"
+        case ":$LAUNCHD_PATH_EXTRA:" in
+            *":$BREW_DIR:"*) ;;
+            *) LAUNCHD_PATH_EXTRA="$LAUNCHD_PATH_EXTRA:$BREW_DIR" ;;
+        esac
+    fi
+    "$PYTHON_BIN" - "$ROOT_DIR/macos/launchd/user/com.user.macos-cleanup-service.plist" "$PLIST" "$LIBEXEC_DIR" "$STATE_DIR" "$LAUNCHD_PATH_EXTRA" <<'PYPLIST'
+import plistlib
+import sys
+from pathlib import Path
+source, target, libexec, state, extra_path = sys.argv[1:]
+with Path(source).open("rb") as file:
+    job = plistlib.load(file)
+job["ProgramArguments"] = [f"{libexec}/python3", f"{libexec}/maintenance.py", "--updates-only"]
+job["EnvironmentVariables"]["PATH"] = f"/usr/bin:/bin:/usr/sbin:/sbin:{extra_path}"
+job["StandardOutPath"] = f"{state}/launchd-stdout.log"
+job["StandardErrorPath"] = f"{state}/launchd-stderr.log"
+# Python configuration must see the same root as the installer.
+job["EnvironmentVariables"]["XDG_CONFIG_HOME"] = str(Path(state).parent)
+with Path(target).open("wb") as file:
+    plistlib.dump(job, file)
+Path(target).chmod(0o644)
+PYPLIST
+    launchctl unload "$PLIST" >/dev/null 2>&1 || true
+    launchctl load "$PLIST"
+    printf 'Installed %s (macOS). Daily job runs on first shell session.\n' "$SERVICE_NAME"
+elif is_linux; then
+    install -m 755 "$ROOT_DIR/shell/$INIT_FILENAME" "$LIBEXEC_DIR/$INIT_FILENAME"
+    install -d -m 700 "$SERVICE_DIR"
+    "$PYTHON_BIN" - "$ROOT_DIR/systemd/user/linux-cleanup.service" "$SERVICE_DIR/linux-cleanup.service" "$CONFIG_ROOT" <<'PYUNIT'
+import sys
+from pathlib import Path
+source, target, config_root = sys.argv[1:]
+value = config_root.replace("%", "%%").replace("\\", "\\\\").replace('"', '\\"')
+Path(target).write_text(Path(source).read_text().replace("CONFIG_ROOT_PLACEHOLDER", value))
+Path(target).chmod(0o644)
+PYUNIT
+    systemctl --user daemon-reload
+    if command -v sudo >/dev/null 2>&1; then
+        SUDOERS_TMP="$(mktemp)"
+        trap 'rm -f "$SUDOERS_TMP"' EXIT
+        "$PYTHON_BIN" "$ROOT_DIR/src/config.py" sudoers-config > "$SUDOERS_TMP"
+        sudo visudo -cf "$SUDOERS_TMP"
+        sudo install -D -m 440 -o root -g root "$SUDOERS_TMP" /etc/sudoers.d/90-linux-cleanup-service
+    else
+        printf 'User files installed. Automatic APT/Snap upgrades need scoped sudo access.\n'
+    fi
+    printf 'Installed %s (Linux). Open a new shell to start the daily job.\n' "$SERVICE_NAME"
+fi
