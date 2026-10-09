@@ -75,7 +75,7 @@ APT cache cleanup currently requires APT updates to be enabled for the account.
 | `TMP_MAX_AGE_HOURS` | `24` | Temporary entry age threshold. |
 | `JOURNAL_WARN_SIZE` | `100MiB` | Journal warning and vacuum trigger. |
 | `JOURNAL_SYSTEM_MAX_USE` | `80M` | Target for approved journal vacuuming. |
-| `COMMAND_TIMEOUT_SECONDS` | `900` | External command timeout. |
+| `COMMAND_TIMEOUT_SECONDS` | `300` | External command timeout. |
 
 Turning off a daily-cache flag does not disable that integration. Size or age
 thresholds can still trigger cleanup after approval. Use the integration's

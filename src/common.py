@@ -4,6 +4,10 @@ from __future__ import annotations
 
 import os
 import shutil
+import selectors
+import signal
+import shlex
+import time
 import subprocess
 import sys
 from pathlib import Path
@@ -52,22 +56,81 @@ def run_command(
     *,
     environment: dict[str, str] | None = None,
 ) -> tuple[int, str, str]:
-    """Run an external command with a bounded timeout."""
+    """Stream progress to stderr and bound both command lifetime and captured output."""
+    print(f"[maintenance] Starting: {shlex.join(command)}", file=sys.stderr, flush=True)
     try:
-        result = subprocess.run(
+        process = subprocess.Popen(
             command,
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=config.command_timeout_seconds,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            stdin=subprocess.DEVNULL,
             cwd=cwd,
+            start_new_session=True,
             env={**os.environ, **environment} if environment is not None else None,
         )
-        return result.returncode, result.stdout.strip(), result.stderr.strip()
-    except subprocess.TimeoutExpired:
-        return 124, "", f"command timed out after {config.command_timeout_seconds}s"
     except OSError as error:
         return 127, "", str(error)
+    captured = {"stdout": bytearray(), "stderr": bytearray()}
+    deadline = time.monotonic() + config.command_timeout_seconds
+    next_notice = time.monotonic() + 15
+    timed_out = False
+    with selectors.DefaultSelector() as selector:
+        selector.register(process.stdout, selectors.EVENT_READ, "stdout")
+        selector.register(process.stderr, selectors.EVENT_READ, "stderr")
+        try:
+            while selector.get_map():
+                now = time.monotonic()
+                if now >= deadline:
+                    timed_out = True
+                    break
+                if now >= next_notice:
+                    print(
+                        f"[maintenance] Still running: {shlex.join(command)}",
+                        file=sys.stderr,
+                        flush=True,
+                    )
+                    next_notice = now + 15
+                for key, _ in selector.select(min(1, deadline - now)):
+                    chunk = os.read(key.fileobj.fileno(), 65536)
+                    if not chunk:
+                        selector.unregister(key.fileobj)
+                        continue
+                    captured[key.data].extend(chunk)
+                    # Keep a bounded tail for status/error reporting.
+                    del captured[key.data][: -2 * 1024 * 1024]
+                    print(
+                        chunk.decode("utf-8", errors="replace"),
+                        end="",
+                        file=sys.stderr,
+                        flush=True,
+                    )
+            if not timed_out:
+                try:
+                    process.wait(timeout=max(0.01, deadline - time.monotonic()))
+                except subprocess.TimeoutExpired:
+                    timed_out = True
+        finally:
+            if timed_out or process.poll() is None:
+                # A separate session lets us terminate descendants, not only the wrapper.
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+            process.wait()
+            process.stdout.close()
+            process.stderr.close()
+    stdout = captured["stdout"].decode("utf-8", errors="replace").strip()
+    stderr = captured["stderr"].decode("utf-8", errors="replace").strip()
+    if timed_out:
+        message = f"command timed out after {config.command_timeout_seconds}s; process group terminated"
+        print(f"[maintenance] {message}", file=sys.stderr, flush=True)
+        return 124, stdout, f"{stderr}\n{message}".strip()
+    print(
+        f"[maintenance] Finished (exit {process.returncode}): {shlex.join(command)}",
+        file=sys.stderr,
+        flush=True,
+    )
+    return process.returncode, stdout, stderr
 
 
 def measure_path(path: Path) -> int:

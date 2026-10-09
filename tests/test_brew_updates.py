@@ -74,10 +74,16 @@ if [ \"$1\" = \"upgrade\" ] && [ \"${FAIL_BREW_UPGRADE:-0}\" = \"1\" ]; then exi
                 skipped: list[str] = []
                 now = datetime.now().astimezone()
                 with patch("cleanup.sys.platform", "darwin"):
-                    result = update_homebrew(config, now, warnings, skipped, dry_run=False)
+                    result = update_homebrew(
+                        config, now, warnings, skipped, dry_run=False
+                    )
                 log = log_path.read_text(encoding="utf-8") if log_path.is_file() else ""
                 state_path = Path(config.state_dir) / "brew_upgrade.json"
-                state = state_path.read_text(encoding="utf-8") if state_path.is_file() else ""
+                state = (
+                    state_path.read_text(encoding="utf-8")
+                    if state_path.is_file()
+                    else ""
+                )
                 return result, log, warnings, skipped, state
             finally:
                 for key, value in original.items():
@@ -85,6 +91,32 @@ if [ \"$1\" = \"upgrade\" ] && [ \"${FAIL_BREW_UPGRADE:-0}\" = \"1\" ]; then exi
                         os.environ.pop(key, None)
                     else:
                         os.environ[key] = value
+
+    def test_source_build_plan_blocks_upgrade(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            binary = root / "bin"
+            binary.mkdir()
+            log = root / "brew.log"
+            self.write_command(
+                binary,
+                "brew",
+                '#!/bin/sh\nprintf \'%s\\n\' "$*" >> "$UPDATE_LOG"\nif [ "$2" = "--dry-run" ]; then printf \'1 homebrew/core formula that would build from source\\n\'; fi\n',
+            )
+            with patch.dict(
+                os.environ,
+                {"PATH": f"{binary}:{os.environ['PATH']}", "UPDATE_LOG": str(log)},
+            ):
+                config, _ = self.load_test_config(root)
+                with patch("cleanup.sys.platform", "darwin"):
+                    warnings, skipped = [], []
+                    result = update_homebrew(
+                        config, datetime.now().astimezone(), warnings, skipped, False
+                    )
+                self.assertEqual(result, "source-build-skipped")
+                self.assertNotIn("--force-bottle", log.read_text())
+                self.assertTrue(skipped)
+                self.assertFalse((config.state_dir / "brew_upgrade.json").exists())
 
     def test_update_runs_before_upgrade(self) -> None:
         """Run brew update before upgrade on the first pass and record state."""
@@ -143,9 +175,15 @@ if [ \"$1\" = \"upgrade\" ] && [ \"${FAIL_BREW_UPGRADE:-0}\" = \"1\" ]; then exi
             try:
                 self.configure_fake_brew(command_dir, log_path)
                 config, _ = self.load_test_config(root, "BREW_UPGRADE_MIN_AGE_DAYS=7\n")
-                old = (datetime.now().astimezone() - timedelta(days=10)).date().isoformat()
+                old = (
+                    (datetime.now().astimezone() - timedelta(days=10))
+                    .date()
+                    .isoformat()
+                )
                 state_path = Path(config.state_dir) / "brew_upgrade.json"
-                state_path.write_text(json.dumps({"last_success": old}), encoding="utf-8")
+                state_path.write_text(
+                    json.dumps({"last_success": old}), encoding="utf-8"
+                )
                 now = datetime.now().astimezone()
                 with patch("cleanup.sys.platform", "darwin"):
                     result = update_homebrew(config, now, [], [], dry_run=False)
@@ -170,7 +208,9 @@ if [ \"$1\" = \"upgrade\" ] && [ \"${FAIL_BREW_UPGRADE:-0}\" = \"1\" ]; then exi
         self.assertEqual(result, "failed")
         self.assertIn("brew update", log)
         self.assertNotIn("brew upgrade", log)
-        self.assertTrue(any("Homebrew update failed" in warning for warning in warnings))
+        self.assertTrue(
+            any("Homebrew update failed" in warning for warning in warnings)
+        )
 
     def test_dry_run_touches_nothing(self) -> None:
         """Report without running brew or writing state."""
@@ -247,10 +287,6 @@ if [ \"$1\" = \"upgrade\" ] && [ \"${FAIL_BREW_UPGRADE:-0}\" = \"1\" ]; then exi
                 patch.object(Path, "home", return_value=home),
             ):
                 self.assertEqual(find_brew(), str(brew))
-
-
-
-
 
 
 if __name__ == "__main__":
