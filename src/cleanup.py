@@ -260,8 +260,41 @@ def update_homebrew(
         age_days = (now - last_success).days
         if age_days < config.brew_upgrade_min_age_days:
             return "deferred"
+    # Ask Homebrew to resolve upgrades first. Never deliberately start a known source build.
+    code, preview, preview_errors = run_command(
+        [brew, "upgrade", "--dry-run"],
+        config,
+        environment={
+            "HOMEBREW_NO_INSTALL_CLEANUP": "1",
+            "HOMEBREW_NO_AUTO_UPDATE": "1",
+            "HOMEBREW_NO_COLOR": "1",
+        },
+    )
+    if code != 0:
+        warnings.append(
+            f"Homebrew upgrade planning failed: {preview_errors or preview or 'unknown error'}"
+        )
+        return "failed"
+    plan = preview + "\n" + preview_errors
+    source_builds = re.search(
+        r"\b[1-9][0-9]*\s+(?:homebrew/core\s+)?formulae?\s+that would build from source",
+        plan,
+        re.IGNORECASE,
+    )
+    if source_builds or re.search(
+        r"(?:would|will|must|requires?)\s+(?:be\s+)?(?:built|build|building|compil\w*)\s+from source",
+        plan,
+        re.IGNORECASE,
+    ):
+        reason = "Homebrew upgrade deferred: plan includes source builds; install compatible bottles or upgrade those packages manually"
+        warnings.append(reason)
+        mark_skipped(skipped, reason)
+        print(f"[maintenance] {reason}", file=sys.stderr, flush=True)
+        return "source-build-skipped"
     code, stdout, stderr = run_command(
-        [brew, "upgrade"], config, environment={"HOMEBREW_NO_INSTALL_CLEANUP": "1"}
+        [brew, "upgrade", "--force-bottle"],
+        config,
+        environment={"HOMEBREW_NO_INSTALL_CLEANUP": "1"},
     )
     if code != 0:
         if permission_limited(stderr or stdout):

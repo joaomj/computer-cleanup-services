@@ -284,7 +284,7 @@ def load_config() -> Config:
         journal_runtime_max_file_size=journal_limit(
             "JOURNAL_RUNTIME_MAX_FILE_SIZE", "8M"
         ),
-        command_timeout_seconds=integer("COMMAND_TIMEOUT_SECONDS", "900"),
+        command_timeout_seconds=integer("COMMAND_TIMEOUT_SECONDS", "300"),
         brew_updates_enabled=enabled("BREW_UPDATES_ENABLED", "true"),
         brew_cleanup_enabled=enabled("BREW_CLEANUP_ENABLED"),
         brew_upgrade_min_age_days=integer("BREW_UPGRADE_MIN_AGE_DAYS", "7"),

@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Request automatic upgrades without holding the caller's shell open.
+set -euo pipefail
+case "$(uname -s)" in
+    Darwin)
+        launchctl start com.user.macos-cleanup-service
+        LOG="${XDG_CONFIG_HOME:-$HOME/Library/Application Support}/macos-cleanup-service/launchd-stderr.log"
+        printf 'Upgrade request sent to launchd. The daily/weekly schedule still applies.\n'
+        printf 'Follow progress: tail -f "%s"\n' "$LOG"
+        ;;
+    Linux)
+        systemctl --user start --no-block linux-cleanup.service
+        printf 'Upgrade request sent to systemd. The daily schedule still applies.\n'
+        printf 'Follow progress: journalctl --user -fu linux-cleanup.service\n'
+        ;;
+    *) printf 'Unsupported platform: %s\n' "$(uname -s)" >&2; exit 1 ;;
+esac

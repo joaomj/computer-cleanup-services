@@ -158,3 +158,22 @@ need the installer or uninstaller.
 ## License
 
 [MIT](LICENSE).
+
+## Upgrade Progress
+
+Run `./scripts/upgrade` to request upgrades through the installed service and
+return immediately to your shell. It prints the command for following progress.
+The daily and weekly schedules still apply. For a foreground forced run, use
+`python3 src/maintenance.py --updates-only --force`.
+
+Commands stream output and progress messages to stderr, including a heartbeat
+when a command is quiet. The default timeout is five minutes per command.
+On timeout the command process group is terminated; completed package changes
+are not rolled back. Set `COMMAND_TIMEOUT_SECONDS` to change the limit.
+
+Homebrew plans upgrades first. If the plan reports source builds, the entire
+upgrade batch is deferred and the status explains why. Otherwise it requests
+bottles with `--force-bottle`, without retrying failures as source builds.
+This is best-effort build avoidance, not a guarantee about every dependency
+or third-party installation script. Nonstandard Homebrew prefixes can cause
+more upgrades to be deferred or fail bottle installation.
