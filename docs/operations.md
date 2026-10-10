@@ -3,6 +3,17 @@
 The examples use Linux paths. On macOS, replace `linux-cleanup-service` with
 `macos-cleanup-service`, and use the macOS configuration directory.
 
+## Daily Schedule
+
+The first interactive shell opening each local calendar day requests cleanup
+and background upgrades. Each has a separate daily record. Later shell openings
+skip work already attempted that day, including failed or interrupted attempts.
+Declining cleanup also consumes that day's cleanup decision. No terminal means
+no cleanup decision is recorded.
+
+There is no scheduled retry or automatic midnight run. Open a shell on the next
+day to start the next pass. Use `--force` only for an explicit same-day retry.
+
 ## Select Actions
 
 From a checkout:

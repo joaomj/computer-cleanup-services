@@ -167,7 +167,6 @@ def main() -> int:
             not args.force
             and not args.dry_run
             and previous.get("attempt_date") == today
-            and previous.get("status") in {"success", "warning"}
         ):
             return 0
         try:
@@ -181,6 +180,8 @@ def main() -> int:
                 print(json.dumps(result, indent=2, sort_keys=True))
                 return 0 if result["status"] != "failed" else 1
             if args.cleanup_only:
+                if sys.stdin.isatty() and sys.stdout.isatty():
+                    write_json(record_path, {"status": "running", "attempt_date": today})
                 result = request_cleanup(config)
             else:
                 write_json(record_path, {"status": "running", "attempt_date": today})
