@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+set -euo pipefail
+ROOT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+if [[ "$(uname -s)" != Linux || "$(id -u)" == 0 ]]; then
+    printf 'Run this installer as a regular Linux desktop user.\n' >&2
+    exit 1
+fi
+for tool in python3 pass-cli busctl systemctl ssh; do
+    if ! command -v "$tool" >/dev/null; then
+        printf 'Required command is missing: %s. Install it, then retry.\n' "$tool" >&2
+        exit 1
+    fi
+done
+python3 -c 'import sys; sys.exit("Python 3.10 or later is required") if sys.version_info < (3, 10) else None'
+pass-cli ssh-agent start --help >/dev/null
+LIBEXEC="$HOME/.local/libexec/proton-pass-ssh-agent"
+UNITS="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
+install -d -m 700 "$LIBEXEC" "$UNITS" "$HOME/.ssh"
+ln -sfn "$(command -v pass-cli)" "$LIBEXEC/pass-cli"
+ln -sfn "$(python3 -c 'import os,sys; print(os.path.realpath(sys.executable))')" "$LIBEXEC/python3"
+install -m 755 "$ROOT_DIR/src/proton_pass_agent.py" "$LIBEXEC/proton_pass_agent.py"
+install -m 644 "$ROOT_DIR/shell/proton-pass-init.sh" "$LIBEXEC/proton-pass-init.sh"
+install -m 755 "$ROOT_DIR/shell/proton-pass-sign.sh" "$LIBEXEC/proton-pass-sign.sh"
+install -m 644 "$ROOT_DIR/systemd/user/proton-pass-ssh-agent.service" "$UNITS/proton-pass-ssh-agent.service"
+python3 - <<'PYCONFIG'
+import os
+from pathlib import Path
+home = Path.home()
+hook = 'if [ -f "$HOME/.local/libexec/proton-pass-ssh-agent/proton-pass-init.sh" ]; then . "$HOME/.local/libexec/proton-pass-ssh-agent/proton-pass-init.sh"; fi'
+for name in (".profile", ".bashrc"):
+    path = home / name
+    text = path.read_text() if path.exists() else ""
+    if hook not in text.splitlines():
+        path.write_text(text.rstrip("\n") + "\n\n" + hook + "\n")
+config = home / ".ssh/proton-pass-github.conf"
+if not config.exists():
+    config.write_text(
+        "Host github.com\n"
+        "    HostName github.com\n"
+        "    User git\n"
+        f"    IdentityAgent /run/user/{os.getuid()}/proton-pass-ssh-agent/agent.sock\n"
+        "    IdentityFile none\n"
+        "    IdentitiesOnly no\n"
+        "Host *\n"
+    )
+config.chmod(0o600)
+PYCONFIG
+systemctl --user daemon-reload
+systemctl --user enable proton-pass-ssh-agent.service
+printf 'Installed and enabled the agent. This installer does not start or restart it.\n'
+printf 'Follow docs/proton-pass.md to log in and connect SSH.\n'

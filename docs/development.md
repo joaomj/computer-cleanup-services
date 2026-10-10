@@ -15,7 +15,10 @@ python3 -m py_compile src/*.py
 Check installer syntax:
 
 ```bash
-bash -n scripts/install scripts/uninstall
+for file in scripts/install scripts/uninstall scripts/install-proton-pass \
+    shell/proton-pass-init.sh shell/proton-pass-sign.sh; do
+    bash -n "$file" || exit
+done
 ```
 
 Run the existing test suite when required:
@@ -25,7 +28,10 @@ Run the existing test suite when required:
 ```
 
 Tests exercise configuration, cleanup, updates, and status reporting.
-Do not run the installer as a development check: it changes the host.
+Do not run installers as development checks: they change the host.
+The optional SSH integration also requires a live check with an unlocked desktop
+keyring and an authenticated Proton account. Verify authentication and signing
+after a fresh graphical login before claiming reboot persistence.
 
 ## Repository Data
 

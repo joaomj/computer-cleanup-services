@@ -3,7 +3,7 @@
 Daily maintenance for Linux and macOS. System upgrades run automatically.
 Cleanup deletions require approval in an interactive terminal.
 
-One codebase supports two installed services:
+The maintenance code supports two platform services:
 
 - Linux: `linux-cleanup.service`, stored under `linux-cleanup-service`.
 - macOS: `com.user.macos-cleanup-service`, stored under `macos-cleanup-service`.
@@ -57,6 +57,9 @@ Existing configuration is preserved. Change the selection later with:
 ```bash
 ./scripts/configure
 ```
+
+Use `./scripts/upgrade` to request background upgrades and print the progress-log command.
+See [operations](docs/operations.md#request-upgrades) for scheduling and timeout behavior.
 
 Open a new shell to request maintenance. Shell startup waits for a cleanup
 response when cleanup actions are enabled. Upgrades run in the background
@@ -147,6 +150,13 @@ Configuration and state remain. The runtime copy is separate from the checkout,
 so removing the checkout does not remove the service. Clone again when you
 need the installer or uninstaller.
 
+## Optional Proton Pass SSH Agent
+
+Linux desktop users can install a native Proton Pass SSH agent separately.
+The integration uses the encrypted desktop keyring for persistent login and
+waits for that keyring to unlock before starting. It does not export SSH private
+keys. See [Proton Pass setup](docs/proton-pass.md).
+
 ## More Information
 
 - [macOS commands](macos/README.md)
@@ -158,22 +168,3 @@ need the installer or uninstaller.
 ## License
 
 [MIT](LICENSE).
-
-## Upgrade Progress
-
-Run `./scripts/upgrade` to request upgrades through the installed service and
-return immediately to your shell. It prints the command for following progress.
-The daily and weekly schedules still apply. For a foreground forced run, use
-`python3 src/maintenance.py --updates-only --force`.
-
-Commands stream output and progress messages to stderr, including a heartbeat
-when a command is quiet. The default timeout is five minutes per command.
-On timeout the command process group is terminated; completed package changes
-are not rolled back. Set `COMMAND_TIMEOUT_SECONDS` to change the limit.
-
-Homebrew plans upgrades first. If the plan reports source builds, the entire
-upgrade batch is deferred and the status explains why. Otherwise it requests
-bottles with `--force-bottle`, without retrying failures as source builds.
-This is best-effort build avoidance, not a guarantee about every dependency
-or third-party installation script. Nonstandard Homebrew prefixes can cause
-more upgrades to be deferred or fail bottle installation.

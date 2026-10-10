@@ -70,6 +70,25 @@ when you want to preview a new selection immediately.
 
 ## Request Upgrades
 
+From a checkout, request background upgrades and print the progress-log command:
+
+```bash
+./scripts/upgrade
+```
+
+The daily and weekly schedules still apply. Commands stream output and periodic
+progress messages to stderr. The default timeout is five minutes per command.
+On timeout, the command process group is terminated. Completed package changes
+are not rolled back. Set `COMMAND_TIMEOUT_SECONDS` to change the limit.
+
+Homebrew plans upgrades first. If the plan reports source builds, the batch is
+deferred. Otherwise, it requests bottles with `--force-bottle` without retrying
+failures as source builds. This does not guarantee that every dependency or
+third-party installer avoids source builds. Nonstandard prefixes can cause
+more deferrals or bottle installation failures.
+
+To request upgrades directly through the installed service:
+
 Linux:
 
 ```bash
@@ -115,3 +134,9 @@ macOS uses `~/Library/Application Support/macos-cleanup-service/`.
 Both locations contain `environment`, `status.json`, `cleanup-status.json`,
 and the maintenance lock. Homebrew upgrade timestamps use `brew_upgrade.json`.
 Do not add these files to Git.
+
+## Optional SSH Agent
+
+The Proton Pass agent has its own installer and lifecycle. Maintenance does not
+start it or manage its credentials. See [Proton Pass setup](proton-pass.md) for
+installation, single-key selection, commit signing, recovery, and removal.

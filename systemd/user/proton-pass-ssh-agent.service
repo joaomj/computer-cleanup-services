@@ -1,0 +1,22 @@
+[Unit]
+Description=Proton Pass native SSH agent
+After=graphical-session-pre.target
+PartOf=graphical-session.target
+StartLimitIntervalSec=300
+StartLimitBurst=3
+
+[Service]
+Type=simple
+Environment=PROTON_PASS_KEY_PROVIDER=keyring
+Environment=PROTON_PASS_LINUX_KEYRING=dbus
+Environment=PYTHONUNBUFFERED=1
+ExecStart=%h/.local/libexec/proton-pass-ssh-agent/python3 %h/.local/libexec/proton-pass-ssh-agent/proton_pass_agent.py
+RuntimeDirectory=proton-pass-ssh-agent
+RuntimeDirectoryMode=0700
+UMask=0077
+Restart=on-failure
+RestartSec=15
+RestartPreventExitStatus=78
+
+[Install]
+WantedBy=graphical-session.target

@@ -1,6 +1,6 @@
 # Architecture
 
-The project has one Python codebase and an OS-aware shell installer.
+Maintenance uses one Python codebase and an OS-aware shell installer.
 The installed service names remain platform-specific.
 
 ```text
@@ -51,3 +51,15 @@ use that interpreter. Removing the checkout does not affect the installed copy.
 Services run as the user. Linux updates and approved root-owned cache/journal
 operations use exact commands in a scoped sudoers rule. No general root shell
 is granted. Installation does not change journal retention or delete journals.
+
+## Optional Proton Pass Agent
+
+`scripts/install-proton-pass` installs a separate Linux user service and Bash
+hooks. `proton_pass_agent.py` waits for the default Secret Service collection to
+unlock, then replaces its process with the native Proton Pass SSH agent.
+The service starts with the graphical session and uses persistent D-Bus keyring
+storage. Its lifecycle is independent of maintenance.
+
+`proton-pass-sign.sh` selects the native agent socket for SSH commit signing.
+Git settings and public-key selectors remain local configuration, not repository
+data. The installer preserves an existing GitHub configuration file.
