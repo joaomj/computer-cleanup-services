@@ -8,8 +8,8 @@ interactive shell
   |
   +--> maintenance.py --cleanup-only
   |      +--> separate daily cleanup decision
-  |      +--> enabled scopes and cleanup preview
-  |      +--> terminal Y/N prompt
+  |      +--> internal cleanup preview
+  |      +--> compact scope and size Y/N prompt
   |      +--> approved cleanup, or no deletion
   |
   +--> systemd user service / launchd user job
@@ -39,7 +39,8 @@ Use `--force` for an explicit retry on the same day.
 
 Background services always use `--updates-only`. There is no CLI flag that
 approves unattended cleanup. The interactive path requires terminal input and
-output, previews the selected scopes, and accepts only Y/yes as approval.
+output, builds an internal preview, and shows a compact scope and size prompt.
+It accepts only Y/yes as approval. Explicit dry runs still print JSON.
 The operation runner also defaults cleanup mutations to inspection-only.
 
 ## Installation Boundary

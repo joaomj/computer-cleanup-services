@@ -11,7 +11,9 @@ One codebase supports two installed services:
 ## How It Works
 
 The first interactive shell of the day offers cleanup for the actions you
-selected. The shell shows enabled scopes and a preview, then waits for Y/N.
+selected. The shell shows one approval prompt with configured paths, other
+selected scopes, and an estimated size in MiB. It does not print the JSON
+preview.
 Only Y authorizes cleanup. Enter, N, closed input, or no terminal means no
 deletion. There is no unattended approval flag.
 

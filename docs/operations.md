@@ -60,7 +60,19 @@ Run from an interactive terminal:
 ~/.local/libexec/linux-cleanup-service/python3 ~/.local/libexec/linux-cleanup-service/maintenance.py --cleanup-only --force
 ```
 
-Inspect the scopes and preview. Enter Y to approve or N to decline.
+The terminal shows one approval prompt instead of a scope list and JSON dump:
+
+```text
+Cleanup will delete eligible data from /path/A, /path/B (estimated 453.5 MiB; actual size may vary). Do you approve? [y/N]
+```
+
+The prompt lists configured paths and selected non-path scopes, such as Docker.
+The estimate combines UV, npm, and Brave cache sizes with reported deletion
+estimates from other actions. Whole-cache sizes can include data cleanup keeps.
+Actions without byte estimates do not contribute to the total. Use the dry-run
+command above to inspect the detailed JSON preview.
+
+Review the scopes. Enter Y to approve or N to decline.
 Enter, interrupted input, or no terminal means no deletion.
 The approval covers one pass. A later pass must ask again.
 

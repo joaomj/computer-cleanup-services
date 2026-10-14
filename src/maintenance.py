@@ -52,7 +52,7 @@ def cleanup_scopes(config: Config) -> list[str]:
         (config.tmp_cleanup_enabled, "Old user-owned temporary files", config.tmp_dir),
     ):
         if enabled:
-            scopes.append(f"{label}: {path}")
+            scopes.append(str(path))
     if config.docker_prune_enabled:
         scopes.append(
             "Unused Docker containers, images, build cache, and networks in the current context; volumes are preserved"
@@ -93,21 +93,25 @@ def request_cleanup(config: Config) -> dict[str, Any]:
             "decision": "no-terminal",
             "deletions_approved": False,
         }
-    print("\nSelected cleanup scopes:")
-    for scope in scopes:
-        print(f"  - {scope}")
-    print("\nCleanup preview (estimates, not an exact file inventory):")
     preview = execute(config, dry_run=True, cleanup_only=True)
-    print(json.dumps(preview, indent=2, sort_keys=True))
     if preview.get("errors"):
         raise RuntimeError("cleanup preview failed; no deletion was authorized")
-    print("\nCleanup can permanently remove data in these scopes.")
-    print(
-        "Eligibility is checked again when cleanup runs. New eligible entries may be included."
+    estimated_bytes = sum(
+        preview.get(key, 0)
+        for key in ("uv_cache_bytes", "npm_cache_bytes", "brave_cache_bytes")
+    ) + sum(
+        value.get("deleted_bytes", 0)
+        for value in preview.values()
+        if isinstance(value, dict)
+    )
+    prompt = (
+        f"Cleanup will delete eligible data from {', '.join(scopes)} "
+        f"(estimated {estimated_bytes / 1024**2:,.1f} MiB; "
+        "actual size may vary). Do you approve? [y/N] "
     )
     while True:
         try:
-            answer = input("Proceed with cleanup deletions? [y/N] ").strip().lower()
+            answer = input(prompt).strip().lower()
         except (EOFError, KeyboardInterrupt):
             print("\nCleanup declined.")
             answer = "n"
