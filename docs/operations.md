@@ -3,6 +3,17 @@
 The examples use Linux paths. On macOS, replace `linux-cleanup-service` with
 `macos-cleanup-service`, and use the macOS configuration directory.
 
+## Daily Schedule
+
+The first interactive shell opening each local calendar day requests cleanup
+and background upgrades. Each has a separate daily record. Later shell openings
+skip work already attempted that day, including failed or interrupted attempts.
+Declining cleanup also consumes that day's cleanup decision. No terminal means
+no cleanup decision is recorded.
+
+There is no scheduled retry or automatic midnight run. Open a shell on the next
+day to start the next pass. Use `--force` only for an explicit same-day retry.
+
 ## Select Actions
 
 From a checkout:
@@ -82,6 +93,25 @@ when you want to preview a new selection immediately.
 
 ## Request Upgrades
 
+From a checkout, request background upgrades and print the progress-log command:
+
+```bash
+./scripts/upgrade
+```
+
+The daily and weekly schedules still apply. Commands stream output and periodic
+progress messages to stderr. The default timeout is five minutes per command.
+On timeout, the command process group is terminated. Completed package changes
+are not rolled back. Set `COMMAND_TIMEOUT_SECONDS` to change the limit.
+
+Homebrew plans upgrades first. If the plan reports source builds, the batch is
+deferred. Otherwise, it requests bottles with `--force-bottle` without retrying
+failures as source builds. This does not guarantee that every dependency or
+third-party installer avoids source builds. Nonstandard prefixes can cause
+more deferrals or bottle installation failures.
+
+To request upgrades directly through the installed service:
+
 Linux:
 
 ```bash
@@ -127,3 +157,9 @@ macOS uses `~/Library/Application Support/macos-cleanup-service/`.
 Both locations contain `environment`, `status.json`, `cleanup-status.json`,
 and the maintenance lock. Homebrew upgrade timestamps use `brew_upgrade.json`.
 Do not add these files to Git.
+
+## Optional SSH Agent
+
+The Proton Pass agent has its own installer and lifecycle. Maintenance does not
+start it or manage its credentials. See [Proton Pass setup](proton-pass.md) for
+installation, single-key selection, commit signing, recovery, and removal.
