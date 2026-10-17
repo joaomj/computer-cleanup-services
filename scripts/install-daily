@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "$(id -u)" != 0 ]]; then
+    printf 'Run this installer through sudo after reviewing its daily deletion policy.\n' >&2
+    exit 1
+fi
+ROOT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+install -d -m 755 /opt/linux-daily-cleanup
+install -m 644 "$ROOT_DIR/src/daily_cleanup.py" /opt/linux-daily-cleanup/daily_cleanup.py.new
+mv -f /opt/linux-daily-cleanup/daily_cleanup.py.new /opt/linux-daily-cleanup/daily_cleanup.py
+install -m 644 "$ROOT_DIR/systemd/linux-daily-cleanup@.service" /etc/systemd/system/
+install -m 644 "$ROOT_DIR/systemd/linux-daily-cleanup@.timer" /etc/systemd/system/
+systemd-analyze verify /etc/systemd/system/linux-daily-cleanup@.service /etc/systemd/system/linux-daily-cleanup@.timer
+
+users=()
+accounts="$(getent passwd)"
+while IFS=: read -r user _ uid _ _ home shell; do
+    if (( uid >= 1000 && uid < 65534 )) && [[ "$home" == "/home/$user" && -d "$home" && "$shell" != */nologin && "$shell" != */false ]]; then
+        users+=("$user")
+    fi
+done <<< "$accounts"
+if (( ${#users[@]} == 0 )); then
+    printf 'No regular /home users found; no timers were enabled.\n' >&2
+    exit 1
+fi
+
+# Every preview must succeed before enabling any deletion timer.
+for user in "${users[@]}"; do
+    printf '\nPreview for %s (no deletion):\n' "$user"
+    runuser -u "$user" -- /usr/bin/python3 -I /opt/linux-daily-cleanup/daily_cleanup.py --dry-run
+done
+# Extend the existing updater rather than scheduling a second package manager.
+apt-config -c "$ROOT_DIR/config/daily-apt.conf" dump > /dev/null
+APT_POLICY_TMP="$(mktemp /etc/apt/apt.conf.d/.linux-daily-updates.XXXXXX)"
+trap 'rm -f "$APT_POLICY_TMP"' EXIT
+install -m 644 "$ROOT_DIR/config/daily-apt.conf" "$APT_POLICY_TMP"
+mv -f "$APT_POLICY_TMP" /etc/apt/apt.conf.d/99linux-daily-updates
+systemctl daemon-reload
+systemctl enable --now apt-daily.timer apt-daily-upgrade.timer
+for user in "${users[@]}"; do
+    systemctl enable --now "linux-daily-cleanup@$user.timer"
+done
+printf '\nEnabled daily cleanup at 03:00–03:20 local time for: %s\n' "${users[*]}"
+printf 'APT now includes normal Ubuntu, GitHub CLI, and Tailscale updates; automatic reboots are disabled.\n'
+printf 'Snap keeps its native automatic refresh schedule. No immediate APT upgrade was requested.\n'
+systemctl list-timers --all 'linux-daily-cleanup@*' --no-pager

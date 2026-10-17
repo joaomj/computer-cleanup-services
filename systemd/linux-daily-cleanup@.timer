@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily disposable-file cleanup schedule for %i
+
+[Timer]
+OnCalendar=*-*-* 03:00:00
+RandomizedDelaySec=20min
+Persistent=yes
+
+[Install]
+WantedBy=timers.target

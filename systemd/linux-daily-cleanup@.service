@@ -1,0 +1,23 @@
+[Unit]
+Description=Daily disposable-file cleanup for %i
+
+[Service]
+Type=oneshot
+User=%i
+WorkingDirectory=/
+ExecStart=/usr/bin/python3 -I /opt/linux-daily-cleanup/daily_cleanup.py --apply --state-dir /var/lib/linux-daily-cleanup/%i
+StateDirectory=linux-daily-cleanup/%i
+StateDirectoryMode=0700
+UMask=0077
+Nice=19
+IOSchedulingClass=idle
+CPUQuota=25%
+MemoryMax=256M
+TimeoutStartSec=30min
+NoNewPrivileges=yes
+RestrictSUIDSGID=yes
+PrivateTmp=no
+PrivateNetwork=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/tmp -/home/%i/projects -/home/%i/.cache/uv -/home/%i/.cache/git -/home/%i/.cache/git-clones
