@@ -63,6 +63,17 @@ def parse_positive_int(value: str, name: str) -> int:
     return result
 
 
+def parse_age_hours(value: str, name: str) -> int:
+    """Parse an age threshold in hours; zero means no minimum age."""
+    try:
+        result = int(value)
+    except ValueError as error:
+        raise ConfigurationError(f"{name} must be a whole number of hours") from error
+    if result < 0:
+        raise ConfigurationError(f"{name} must be zero or more hours")
+    return result
+
+
 def parse_bool(value: str, name: str) -> bool:
     """Parse a boolean setting."""
     normalized = value.strip().lower()
@@ -151,6 +162,9 @@ class Config:
     zed_server_keep_count: int
     project_artifacts_cleanup_enabled: bool
     project_artifacts_max_age_hours: int
+    project_cache_max_age_hours: int
+    high_risk_review_disk_percent: int
+    high_risk_review_memory_percent: int
     docker_prune_enabled: bool
     docker_prune_max_age_hours: int
     apt_cache_cleanup_enabled: bool
@@ -176,6 +190,7 @@ class Config:
     runtime_gpg_path: Path | None
     apt_updates_enabled: bool
     snap_updates_enabled: bool
+    sudo_tasks_enabled: bool
 
 
 def load_config() -> Config:
@@ -195,6 +210,9 @@ def load_config() -> Config:
 
     def integer(name: str, default: str) -> int:
         return parse_positive_int(_value(values, name, default), name)
+
+    def hours(name: str, default: str) -> int:
+        return parse_age_hours(_value(values, name, default), name)
 
     def enabled(name: str, default: str = "false") -> bool:
         return parse_bool(_value(values, name, default), name)
@@ -251,30 +269,35 @@ def load_config() -> Config:
         uv_cache_max_size=size("UV_CACHE_MAX_SIZE", "1GiB"),
         brave_cache_max_size=size("BRAVE_CACHE_MAX_SIZE", "2GiB"),
         npm_cache_warn_size=size("NPM_CACHE_WARN_SIZE", "1GiB"),
-        cache_max_age_hours=integer("CACHE_MAX_AGE_HOURS", "24"),
-        uv_cleanup_enabled=enabled("UV_CLEANUP_ENABLED"),
-        brave_cleanup_enabled=enabled("BRAVE_CLEANUP_ENABLED"),
-        npm_cleanup_enabled=enabled("NPM_CLEANUP_ENABLED"),
+        cache_max_age_hours=hours("CACHE_MAX_AGE_HOURS", "24"),
+        uv_cleanup_enabled=enabled("UV_CLEANUP_ENABLED", "true"),
+        brave_cleanup_enabled=enabled("BRAVE_CLEANUP_ENABLED", "true"),
+        npm_cleanup_enabled=enabled("NPM_CLEANUP_ENABLED", "true"),
         uv_cache_clean_daily=enabled("UV_CACHE_CLEAN_DAILY", "true"),
-        uv_cache_max_age_hours=integer("UV_CACHE_MAX_AGE_HOURS", "24"),
+        uv_cache_max_age_hours=hours("UV_CACHE_MAX_AGE_HOURS", "24"),
         npm_cache_clean_daily=enabled("NPM_CACHE_CLEAN_DAILY", "true"),
-        npm_cache_max_age_hours=integer("NPM_CACHE_MAX_AGE_HOURS", "24"),
-        yarn_cleanup_enabled=enabled("YARN_CLEANUP_ENABLED"),
-        playwright_cleanup_enabled=enabled("PLAYWRIGHT_CLEANUP_ENABLED"),
-        zed_cleanup_enabled=enabled("ZED_CLEANUP_ENABLED"),
-        huggingface_cleanup_enabled=enabled("HUGGINGFACE_CLEANUP_ENABLED"),
-        zed_server_cleanup_enabled=enabled("ZED_SERVER_CLEANUP_ENABLED"),
+        npm_cache_max_age_hours=hours("NPM_CACHE_MAX_AGE_HOURS", "24"),
+        yarn_cleanup_enabled=enabled("YARN_CLEANUP_ENABLED", "true"),
+        playwright_cleanup_enabled=enabled("PLAYWRIGHT_CLEANUP_ENABLED", "true"),
+        zed_cleanup_enabled=enabled("ZED_CLEANUP_ENABLED", "true"),
+        huggingface_cleanup_enabled=enabled("HUGGINGFACE_CLEANUP_ENABLED", "true"),
+        zed_server_cleanup_enabled=enabled("ZED_SERVER_CLEANUP_ENABLED", "true"),
         zed_server_keep_count=integer("ZED_SERVER_KEEP_COUNT", "2"),
-        project_artifacts_cleanup_enabled=enabled("PROJECT_ARTIFACTS_CLEANUP_ENABLED"),
-        project_artifacts_max_age_hours=integer(
-            "PROJECT_ARTIFACTS_MAX_AGE_HOURS", "24"
+        project_artifacts_cleanup_enabled=enabled("PROJECT_ARTIFACTS_CLEANUP_ENABLED", "true"),
+        project_artifacts_max_age_hours=hours("PROJECT_ARTIFACTS_MAX_AGE_HOURS", "24"),
+        project_cache_max_age_hours=hours("PROJECT_CACHE_MAX_AGE_HOURS", "1"),
+        high_risk_review_disk_percent=hours(
+            "HIGH_RISK_REVIEW_DISK_PERCENT", "85"
         ),
-        docker_prune_enabled=enabled("DOCKER_PRUNE_ENABLED"),
-        docker_prune_max_age_hours=integer("DOCKER_PRUNE_MAX_AGE_HOURS", "24"),
-        apt_cache_cleanup_enabled=enabled("APT_CACHE_CLEANUP_ENABLED"),
-        tmp_cleanup_enabled=enabled("TMP_CLEANUP_ENABLED"),
-        tmp_max_age_hours=integer("TMP_MAX_AGE_HOURS", "24"),
-        journal_cleanup_enabled=enabled("JOURNAL_CLEANUP_ENABLED"),
+        high_risk_review_memory_percent=hours(
+            "HIGH_RISK_REVIEW_MEMORY_PERCENT", "10"
+        ),
+        docker_prune_enabled=enabled("DOCKER_PRUNE_ENABLED", "true"),
+        docker_prune_max_age_hours=hours("DOCKER_PRUNE_MAX_AGE_HOURS", "24"),
+        apt_cache_cleanup_enabled=enabled("APT_CACHE_CLEANUP_ENABLED", "true"),
+        tmp_cleanup_enabled=enabled("TMP_CLEANUP_ENABLED", "true"),
+        tmp_max_age_hours=hours("TMP_MAX_AGE_HOURS", "24"),
+        journal_cleanup_enabled=enabled("JOURNAL_CLEANUP_ENABLED", "true"),
         journal_warn_size=size("JOURNAL_WARN_SIZE", "100MiB"),
         journal_system_max_use=journal_limit("JOURNAL_SYSTEM_MAX_USE", "80M"),
         journal_system_max_file_size=journal_limit(
@@ -286,7 +309,7 @@ def load_config() -> Config:
         ),
         command_timeout_seconds=integer("COMMAND_TIMEOUT_SECONDS", "300"),
         brew_updates_enabled=enabled("BREW_UPDATES_ENABLED", "true"),
-        brew_cleanup_enabled=enabled("BREW_CLEANUP_ENABLED"),
+        brew_cleanup_enabled=enabled("BREW_CLEANUP_ENABLED", "true"),
         brew_upgrade_min_age_days=integer("BREW_UPGRADE_MIN_AGE_DAYS", "7"),
         runtime_updates_enabled=enabled("RUNTIME_UPDATES_ENABLED"),
         runtime_node_major=integer("RUNTIME_NODE_MAJOR", "24"),
@@ -300,6 +323,7 @@ def load_config() -> Config:
         runtime_gpg_path=optional_path("RUNTIME_GPG_PATH"),
         apt_updates_enabled=enabled("APT_UPDATES_ENABLED", "true"),
         snap_updates_enabled=enabled("SNAP_UPDATES_ENABLED", "true"),
+        sudo_tasks_enabled=enabled("SUDO_TASKS_ENABLED", "true"),
     )
 
 

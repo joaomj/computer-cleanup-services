@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Select optional maintenance actions without granting deletion approval."""
+"""Select maintenance actions. High-risk items still need a recorded decision."""
 
 from __future__ import annotations
 
@@ -16,10 +16,10 @@ CHOICES = (
     ("npm cache", ("NPM_CLEANUP_ENABLED",)),
     ("Yarn cache", ("YARN_CLEANUP_ENABLED",)),
     ("Playwright browsers", ("PLAYWRIGHT_CLEANUP_ENABLED",)),
-    ("Zed data and cache (can remove persistent state)", ("ZED_CLEANUP_ENABLED",)),
+    ("Zed cache, and review of Zed saved data", ("ZED_CLEANUP_ENABLED",)),
     ("Zed remote servers", ("ZED_SERVER_CLEANUP_ENABLED",)),
     ("Hugging Face orphaned downloads", ("HUGGINGFACE_CLEANUP_ENABLED",)),
-    ("Project dependencies and build output", ("PROJECT_ARTIFACTS_CLEANUP_ENABLED",)),
+    ("Project tool caches, dependencies, and build output", ("PROJECT_ARTIFACTS_CLEANUP_ENABLED",)),
     ("Docker unused resources (volumes preserved)", ("DOCKER_PRUNE_ENABLED",)),
     ("Old user-owned temporary files", ("TMP_CLEANUP_ENABLED",)),
     ("APT downloaded package cache (Linux)", ("APT_CACHE_CLEANUP_ENABLED",)),
@@ -42,7 +42,7 @@ def main() -> int:
     config = load_config()
     path = config.state_dir / "environment"
     values = read_environment(path)
-    print("Choose optional maintenance actions. This replaces the previous selection.")
+    print("Choose maintenance actions. This replaces the previous selection.")
     for index, (label, _) in enumerate(CHOICES, start=1):
         print(f"  {index}. {label}")
     while True:
@@ -72,7 +72,7 @@ def main() -> int:
         "w", encoding="utf-8", dir=path.parent, delete=False
     ) as file:
         file.write(
-            "# Selected maintenance settings. Cleanup still requires Y/N approval.\n"
+            "# Selected maintenance settings. High-risk items still need a recorded decision.\n"
         )
         for key, value in values.items():
             file.write(f"{key}={value}\n")
@@ -80,7 +80,7 @@ def main() -> int:
     temporary.chmod(0o600)
     temporary.replace(path)
     print(
-        f"Saved selection to {path}. Deletions still require approval for each cleanup pass."
+        f"Saved selection to {path}. High-risk items are still offered for review before deletion."
     )
     return 0
 

@@ -76,7 +76,7 @@ class InstallationTest(unittest.TestCase):
 
                 install()
                 settings = config.read_text()
-                self.assertIn("PROJECT_ARTIFACTS_CLEANUP_ENABLED=false", settings)
+                self.assertIn("PROJECT_ARTIFACTS_CLEANUP_ENABLED=true", settings)
                 config.write_text(settings + "PROJECT_ARTIFACTS_MAX_AGE_HOURS=72\n")
                 install()
                 self.assertTrue(
@@ -98,8 +98,10 @@ class InstallationTest(unittest.TestCase):
                         [
                             str(installed / "python3"),
                             str(installed / "maintenance.py"),
-                            "--updates-only",
                         ],
+                    )
+                    self.assertEqual(
+                        job["StartCalendarInterval"], {"Hour": 3, "Minute": 0}
                     )
                     self.assertEqual(
                         job["EnvironmentVariables"]["XDG_CONFIG_HOME"],
@@ -107,8 +109,29 @@ class InstallationTest(unittest.TestCase):
                     )
                 else:
                     unit = home / "settings/systemd/user/linux-cleanup.service"
-                    self.assertIn("--updates-only", unit.read_text())
-                    self.assertNotIn("journalctl --vacuum", log.read_text())
+                    self.assertTrue(unit.exists())
+                    self.assertTrue(
+                        (home / "settings/systemd/user/linux-cleanup.timer").exists()
+                    )
+                    commands = log.read_text()
+                    self.assertIn("systemctl --user enable --now linux-cleanup.timer", commands)
+                    self.assertNotIn("journalctl --vacuum", commands)
+                    # Opening a shell with nothing to review starts the pass and never prompts.
+                    hook = Terminal(
+                        ["bash", "-c", f". '{installed / 'bashrc-init.sh'}'"],
+                        environment,
+                        str(home),
+                    )
+                    try:
+                        output = hook.read_until(timeout=20)
+                        self.assertEqual(hook.process.wait(timeout=5), 0, output)
+                    finally:
+                        hook.close()
+                    self.assertNotIn("[y/N", output)
+                    self.assertIn(
+                        "systemctl --user start --no-block linux-cleanup.service",
+                        log.read_text(),
+                    )
                 help_result = subprocess.run(
                     [
                         str(installed / "python3"),

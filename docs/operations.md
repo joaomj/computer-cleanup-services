@@ -5,14 +5,59 @@ The examples use Linux paths. On macOS, replace `linux-cleanup-service` with
 
 ## Daily Schedule
 
-The first interactive shell opening each local calendar day requests cleanup
-and background upgrades. Each has a separate daily record. Later shell openings
-skip work already attempted that day, including failed or interrupted attempts.
-Declining cleanup also consumes that day's cleanup decision. No terminal means
-no cleanup decision is recorded.
+The daily pass runs at 03:00 through `linux-cleanup.timer` on Linux or the
+LaunchAgent calendar interval on macOS. The first interactive shell of the day
+also requests the pass. The pass runs at most once per local calendar day,
+including failed or interrupted attempts. The Linux timer is persistent, so a
+missed 03:00 run starts after the next boot.
 
-There is no scheduled retry or automatic midnight run. Open a shell on the next
-day to start the next pass. Use `--force` only for an explicit same-day retry.
+For background runs while you are logged out on Linux, enable lingering:
+
+```bash
+sudo loginctl enable-linger "$USER"
+```
+
+## Review High-Risk Items
+
+When high-risk items wait for a decision and the system is short of resources,
+the next interactive shell asks about each one. The prompt appears when the
+disk is at least `HIGH_RISK_REVIEW_DISK_PERCENT` full, available memory is below
+`HIGH_RISK_REVIEW_MEMORY_PERCENT`, or swap is at least 90% used. Otherwise the
+items stay pending and the shell prints nothing.
+
+Enter `y` to delete, `n` or Enter to keep, or `q` to stop and decide later.
+The shell asks at most once per day. If the daily pass is still running, the
+review waits for a later shell. `status.py --review-json` reports a deferred
+review and its reason.
+
+Every answer is recorded in `decisions.json`. A kept item returns only when it
+grows by more than 25%. A deleted item that appears again is offered again.
+To review now, even when the system has free space:
+
+```bash
+~/.local/libexec/linux-cleanup-service/python3 ~/.local/libexec/linux-cleanup-service/maintenance.py --review --force --ignore-pressure
+```
+
+To forget all recorded decisions, delete `decisions.json` in the state
+directory. The next daily pass offers every current item again.
+
+## Multiple Accounts on One Host
+
+Install the service once per account, as that account. Each account keeps its
+own configuration, pending review, decisions, and daily timer.
+
+Only one account needs the scoped sudo rule. Accounts without it set
+`SUDO_TASKS_ENABLED=false` and run user-level actions only. Their system
+updates, APT cache cleanup, and system journal tasks stay disabled.
+
+Enable lingering so an account's timer runs without a login session:
+
+```bash
+sudo loginctl enable-linger <account>
+```
+
+The installer starts each account's timer. A user manager exists only while the
+account is logged in or lingering is enabled.
 
 ## Select Actions
 
@@ -34,12 +79,11 @@ Review paths and thresholds before enabling application cleanup.
 
 ```bash
 ~/.local/libexec/linux-cleanup-service/python3 ~/.local/libexec/linux-cleanup-service/status.py --json
-~/.local/libexec/linux-cleanup-service/python3 ~/.local/libexec/linux-cleanup-service/status.py --cleanup-json
+~/.local/libexec/linux-cleanup-service/python3 ~/.local/libexec/linux-cleanup-service/status.py --review-json
 ```
 
-The first command shows upgrades. The second shows the cleanup decision and
-result. Shell status stays silent unless the last upgrade pass failed.
-Cleanup command failures are printed in the requesting terminal.
+The first command shows the daily pass. The second shows the last review.
+Shell status stays silent unless the last daily pass failed.
 
 Linux service logs:
 
@@ -53,41 +97,25 @@ macOS logs:
 tail -n 50 "$HOME/Library/Application Support/macos-cleanup-service/launchd-stderr.log"
 ```
 
-## Preview Cleanup
+## Preview the Daily Pass
 
 ```bash
-~/.local/libexec/linux-cleanup-service/python3 ~/.local/libexec/linux-cleanup-service/maintenance.py --cleanup-only --dry-run --force
+~/.local/libexec/linux-cleanup-service/python3 ~/.local/libexec/linux-cleanup-service/maintenance.py --dry-run
 ```
 
-The preview skips deletion commands and upgrades, including journal vacuuming.
-It can create the state directory and lock file. It reports estimates and
-selected action results, not a fixed file inventory.
+The preview skips upgrades and deletions, including journal vacuuming.
+It lists the high-risk candidates and reports low-risk estimates.
+It can create the state directory and lock file.
 
-## Request Approved Cleanup
+## Request the Daily Pass
 
-Run from an interactive terminal:
-
-```bash
-~/.local/libexec/linux-cleanup-service/python3 ~/.local/libexec/linux-cleanup-service/maintenance.py --cleanup-only --force
-```
-
-Inspect the scopes and preview. Enter Y to approve or N to decline.
-Enter, interrupted input, or no terminal means no deletion.
-The approval covers one pass. A later pass must ask again.
-
-If another maintenance pass holds the lock, retry after it finishes.
-Changing the selected actions does not reset today's decision; use `--force`
-when you want to preview a new selection immediately.
-
-## Request Upgrades
-
-From a checkout, request background upgrades and print the progress-log command:
+From a checkout, request the daily pass in the background and print the progress-log command:
 
 ```bash
 ./scripts/upgrade
 ```
 
-The daily and weekly schedules still apply. Commands stream output and periodic
+The daily gate and weekly Homebrew interval still apply. Commands stream output and periodic
 progress messages to stderr. The default timeout is five minutes per command.
 On timeout, the command process group is terminated. Completed package changes
 are not rolled back. Set `COMMAND_TIMEOUT_SECONDS` to change the limit.
@@ -98,7 +126,7 @@ failures as source builds. This does not guarantee that every dependency or
 third-party installer avoids source builds. Nonstandard prefixes can cause
 more deferrals or bottle installation failures.
 
-To request upgrades directly through the installed service:
+To request the daily pass directly through the installed service:
 
 Linux:
 
@@ -112,11 +140,10 @@ macOS:
 launchctl start com.user.macos-cleanup-service
 ```
 
-These commands request upgrades only and respect the daily gate.
-For an explicit same-day retry:
+These commands respect the daily gate. For an explicit same-day retry:
 
 ```bash
-~/.local/libexec/linux-cleanup-service/python3 ~/.local/libexec/linux-cleanup-service/maintenance.py --updates-only --force
+~/.local/libexec/linux-cleanup-service/python3 ~/.local/libexec/linux-cleanup-service/maintenance.py --force
 ```
 
 ## Linux Privileged Commands
@@ -129,9 +156,11 @@ Inspect its generated rules:
 ```
 
 The rules permit APT metadata refresh, upgrades and cache cleanup, Snap refresh,
-and journal rotation and vacuuming. Cleanup commands still require terminal
-approval through the maintenance entry point. A sudoers rule itself does not
-enforce this prompt; it grants the account those exact commands.
+and journal rotation and vacuuming. The daily pass runs them without a prompt.
+
+To install for an account without sudo, run `SKIP_SUDOERS=1 ./scripts/install`
+as that account and set `SUDO_TASKS_ENABLED=false`. Root-owned tasks are then
+disabled for the account instead of reported as failures.
 
 After changing `JOURNAL_SYSTEM_MAX_USE`, rerun the installer to regenerate the
 allowed vacuum command. The installer does not vacuum journals or set an
@@ -142,8 +171,8 @@ automatic retention policy.
 Linux stores settings and records under `~/.config/linux-cleanup-service/`,
 or `XDG_CONFIG_HOME/linux-cleanup-service` when set.
 macOS uses `~/Library/Application Support/macos-cleanup-service/`.
-Both locations contain `environment`, `status.json`, `cleanup-status.json`,
-and the maintenance lock. Homebrew upgrade timestamps use `brew_upgrade.json`.
+Both locations contain `environment`, `status.json`, `review-status.json`,
+`pending-review.json`, `decisions.json`, and the maintenance lock. Homebrew upgrade timestamps use `brew_upgrade.json`.
 Do not add these files to Git.
 
 ## Optional SSH Agent

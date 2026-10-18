@@ -4,43 +4,53 @@ Maintenance uses one Python codebase and an OS-aware shell installer.
 The installed service names remain platform-specific.
 
 ```text
-interactive shell
-  |
-  +--> maintenance.py --cleanup-only
-  |      +--> separate daily cleanup decision
-  |      +--> enabled scopes and cleanup preview
-  |      +--> terminal Y/N prompt
-  |      +--> approved cleanup, or no deletion
+03:00 timer, or first shell of the day
   |
   +--> systemd user service / launchd user job
-         +--> maintenance.py --updates-only
-                +--> daily upgrade gate
+         +--> maintenance.py (daily pass, once per day)
                 +--> APT/Snap on Linux or Homebrew on macOS
                 +--> optional verified Node.js/Bun upgrades on macOS
+                +--> low-risk cleanup, no prompt (caches, temp, tool caches)
+                +--> high-risk discovery -> pending-review.json
                 +--> status.json
+
+interactive shell, when pending-review.json exists
+  |
+  +--> maintenance.py --review (once per day)
+         +--> pressure gate: disk, memory, or swap near full
+         +--> y/N/q per item
+         +--> decisions.json, review-status.json
+         +--> re-validated deletion of approved items
 ```
 
 ## Responsibilities
 
 - `config.py` validates settings and generates scoped Linux sudo rules.
-- `configure.py` selects optional actions without authorizing deletions.
-- `maintenance.py` owns command-line modes, daily gates, and terminal approval.
-- `cleanup.py` runs selected update and cleanup operations.
-- `cache_cleanup.py` owns application cache cleanup.
+- `configure.py` selects actions.
+- `maintenance.py` owns command-line modes, daily gates, and the review prompt.
+- `cleanup.py` runs upgrades and low-risk cleanup, then calls discovery.
+- `cache_cleanup.py` owns low-risk application cache cleanup.
+- `artifacts.py` owns project folder rules and automatic tool-cache cleanup.
+- `high_risk.py` finds high-risk candidates and deletes approved ones after a
+  new check.
+- `decisions.py` records decisions and the pending-review list.
+- `common.py` owns commands, the process-reference check, and tree inspection.
 - `runtime_update.py` verifies and installs optional runtime upgrades.
 - `state.py` owns the process lock and atomic private state writes.
-- `status.py` reports update and cleanup records.
+- `pressure.py` decides whether the machine needs space before a review.
+- `status.py` reports the daily pass and review records.
 
-A shared exclusive lock prevents simultaneous maintenance passes.
-`status.json` records upgrades. `cleanup-status.json` records cleanup decisions.
-Declining cleanup consumes the day's cleanup decision, not the update gate.
-A missing terminal does not consume the next interactive cleanup decision.
-Use `--force` for an explicit retry on the same day.
+A shared exclusive lock prevents a review and a daily pass from running at the
+same time. A review that meets a running pass exits silently.
 
-Background services always use `--updates-only`. There is no CLI flag that
-approves unattended cleanup. The interactive path requires terminal input and
-output, previews the selected scopes, and accepts only Y/yes as approval.
-The operation runner also defaults cleanup mutations to inspection-only.
+A high-risk candidate has a stable identity: the project folder, the data entry,
+the Hugging Face model, or the Docker image ID. The decision record stores the
+identity, answer, and size. A kept candidate is offered again only when its size
+is more than 125% of the recorded size.
+
+Before each high-risk deletion, the code captures running-program references
+again and checks ownership, age, special files, and Git state for every target.
+A target that fails a check is kept and reported.
 
 ## Installation Boundary
 
@@ -48,7 +58,7 @@ The installer copies runtime files outside the checkout and records the selected
 Python interpreter through an installed symlink. The shell hooks and service
 use that interpreter. Removing the checkout does not affect the installed copy.
 
-Services run as the user. Linux updates and approved root-owned cache/journal
+Services run as the user. Linux updates and root-owned cache and journal
 operations use exact commands in a scoped sudoers rule. No general root shell
 is granted. Installation does not change journal retention or delete journals.
 

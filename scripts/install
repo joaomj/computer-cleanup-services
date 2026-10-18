@@ -45,6 +45,10 @@ install -m 755 "$ROOT_DIR/src/status.py" "$LIBEXEC_DIR/status.py"
 install -m 755 "$ROOT_DIR/src/state.py" "$LIBEXEC_DIR/state.py"
 install -m 755 "$ROOT_DIR/src/maintenance.py" "$LIBEXEC_DIR/maintenance.py"
 install -m 755 "$ROOT_DIR/src/configure.py" "$LIBEXEC_DIR/configure.py"
+install -m 755 "$ROOT_DIR/src/high_risk.py" "$LIBEXEC_DIR/high_risk.py"
+install -m 755 "$ROOT_DIR/src/artifacts.py" "$LIBEXEC_DIR/artifacts.py"
+install -m 755 "$ROOT_DIR/src/pressure.py" "$LIBEXEC_DIR/pressure.py"
+install -m 755 "$ROOT_DIR/src/decisions.py" "$LIBEXEC_DIR/decisions.py"
 
 if [ ! -e "$CONFIG_DIR/environment" ]; then
     ENV_TEMPLATE="$ROOT_DIR/config/default.conf"
@@ -107,7 +111,7 @@ from pathlib import Path
 source, target, libexec, state, extra_path = sys.argv[1:]
 with Path(source).open("rb") as file:
     job = plistlib.load(file)
-job["ProgramArguments"] = [f"{libexec}/python3", f"{libexec}/maintenance.py", "--updates-only"]
+job["ProgramArguments"] = [f"{libexec}/python3", f"{libexec}/maintenance.py"]
 job["EnvironmentVariables"]["PATH"] = f"/usr/bin:/bin:/usr/sbin:/sbin:{extra_path}"
 job["StandardOutPath"] = f"{state}/launchd-stdout.log"
 job["StandardErrorPath"] = f"{state}/launchd-stderr.log"
@@ -119,7 +123,7 @@ Path(target).chmod(0o644)
 PYPLIST
     launchctl unload "$PLIST" >/dev/null 2>&1 || true
     launchctl load "$PLIST"
-    printf 'Installed %s (macOS). Daily job runs on first shell session.\n' "$SERVICE_NAME"
+    printf 'Installed %s (macOS). The daily pass runs at 03:00 and on the first shell of the day.\n' "$SERVICE_NAME"
 elif is_linux; then
     install -m 755 "$ROOT_DIR/shell/$INIT_FILENAME" "$LIBEXEC_DIR/$INIT_FILENAME"
     install -d -m 700 "$SERVICE_DIR"
@@ -131,8 +135,12 @@ value = config_root.replace("%", "%%").replace("\\", "\\\\").replace('"', '\\"')
 Path(target).write_text(Path(source).read_text().replace("CONFIG_ROOT_PLACEHOLDER", value))
 Path(target).chmod(0o644)
 PYUNIT
+    install -m 644 "$ROOT_DIR/systemd/user/linux-cleanup.timer" "$SERVICE_DIR/linux-cleanup.timer"
     systemctl --user daemon-reload
-    if command -v sudo >/dev/null 2>&1; then
+    systemctl --user enable --now linux-cleanup.timer
+    if [ "${SKIP_SUDOERS:-0}" = "1" ]; then
+        printf 'Skipped the scoped sudo rule (SKIP_SUDOERS=1).\n'
+    elif command -v sudo >/dev/null 2>&1; then
         SUDOERS_TMP="$(mktemp)"
         trap 'rm -f "$SUDOERS_TMP"' EXIT
         "$PYTHON_BIN" "$ROOT_DIR/src/config.py" sudoers-config > "$SUDOERS_TMP"
@@ -141,5 +149,5 @@ PYUNIT
     else
         printf 'User files installed. Automatic APT/Snap upgrades need scoped sudo access.\n'
     fi
-    printf 'Installed %s (Linux). Open a new shell to start the daily job.\n' "$SERVICE_NAME"
+    printf 'Installed %s (Linux). The daily pass runs at 03:00 and on the first shell of the day.\n' "$SERVICE_NAME"
 fi

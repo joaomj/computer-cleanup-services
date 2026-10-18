@@ -7,10 +7,12 @@ import shutil
 import selectors
 import signal
 import shlex
+import stat
 import time
 import subprocess
 import sys
 from pathlib import Path
+from typing import Callable
 
 from config import Config
 
@@ -208,46 +210,193 @@ def process_is_running(names: set[str]) -> bool:
     return _process_is_running_linux(names)
 
 
-def process_uses_path(path: Path) -> bool:
-    """Return whether a process owned by this user has a handle in a path."""
-    root = path.resolve()
-    if sys.platform == "darwin":
-        lsof = shutil.which("lsof")
+SESSION_SERVICES = frozenset({"systemd", "(sd-pam)", "ssh-agent", "gpg-agent"})
+
+
+def tool_path(name: str, *fallbacks: str) -> str | None:
+    """Find a tool on PATH, then in known system locations.
+
+    Service managers and non-login shells can run with a PATH that omits
+    directories such as /usr/sbin, where macOS keeps lsof.
+    """
+    resolved = shutil.which(name)
+    if resolved:
+        return resolved
+    for candidate in fallbacks:
+        path = Path(candidate)
+        if path.is_file() and os.access(path, os.X_OK):
+            return str(path)
+    return None
+
+
+def within(path: Path, root: Path) -> bool:
+    """Return whether path is root or lies beneath it, lexically."""
+    return path == root or root in path.parents
+
+
+class ProcessPaths:
+    """Absolute paths that this user's processes reference at one moment.
+
+    On Linux, sandboxed processes such as browser renderers hide their open
+    files but still expose their command line. A process that exposes nothing
+    makes the snapshot uncertain, and an uncertain snapshot reports every path
+    as in use so that nothing is deleted. macOS uses lsof.
+    """
+
+    def __init__(self, paths: set[Path], uncertain: bool) -> None:
+        self.paths = paths
+        self.uncertain = uncertain
+
+    @classmethod
+    def capture(cls) -> "ProcessPaths":
+        if sys.platform == "darwin":
+            return cls._capture_macos()
+        return cls._capture_linux()
+
+    @classmethod
+    def _capture_linux(cls) -> "ProcessPaths":
+        paths: set[Path] = set()
+        proc = Path("/proc")
+        if not proc.is_dir():
+            return cls(paths, True)
+        for entry in proc.iterdir():
+            if not entry.name.isdigit() or int(entry.name) == os.getpid():
+                continue
+            try:
+                if entry.stat().st_uid != os.getuid():
+                    continue
+                name = (entry / "comm").read_text(encoding="utf-8").strip()
+            except (FileNotFoundError, ProcessLookupError, PermissionError):
+                continue
+            if name in SESSION_SERVICES:
+                continue
+            references, visible = _linux_process_references(entry)
+            paths.update(references)
+            if not visible:
+                return cls(paths, True)
+        return cls(paths, False)
+
+    @classmethod
+    def _capture_macos(cls) -> "ProcessPaths":
+        """List open files and working directories through lsof."""
+        lsof = tool_path("lsof", "/usr/sbin/lsof", "/usr/bin/lsof")
         if lsof is None:
-            return True
+            return cls(set(), True)
         try:
             result = subprocess.run(
-                [lsof, "-a", "-u", str(os.getuid()), "+D", str(root), "-t"],
+                [lsof, "-n", "-P", "-w", "-u", str(os.getuid()), "-Fn"],
                 check=False,
                 capture_output=True,
                 text=True,
-                timeout=5,
+                timeout=120,
             )
         except (OSError, subprocess.TimeoutExpired):
+            return cls(set(), True)
+        if result.returncode != 0 and not result.stdout.strip():
+            return cls(set(), True)
+        paths = {
+            Path(line[1:])
+            for line in result.stdout.splitlines()
+            if line.startswith("n/")
+        }
+        return cls(paths, False)
+
+    def uses(self, path: Path) -> bool:
+        if self.uncertain:
             return True
-        return result.returncode == 0 and bool(result.stdout.strip())
-    proc = Path("/proc")
-    if not proc.is_dir():
-        return False
-    for entry in proc.iterdir():
-        if not entry.name.isdigit():
-            continue
+        root = path.resolve()
+        return any(within(reference, root) for reference in self.paths)
+
+
+def _linux_process_references(entry: Path) -> tuple[set[Path], bool]:
+    """Collect cwd, executable, open and mapped files, and path arguments.
+
+    Returns the references and whether any source was readable.
+    """
+    references: set[Path] = set()
+    visible = False
+
+    def add(target: str) -> None:
+        if target.startswith("/"):
+            references.add(Path(target.removesuffix(" (deleted)")))
+
+    for link in ("cwd", "exe"):
         try:
-            status = (entry / "status").read_text(encoding="utf-8")
-            uid_line = next(
-                line for line in status.splitlines() if line.startswith("Uid:")
-            )
-            if int(uid_line.split()[1]) != os.getuid():
-                continue
-            links = [entry / "cwd"]
-            links.extend((entry / "fd").iterdir())
-            for link in links:
-                candidate = Path(os.path.realpath(link))
-                try:
-                    candidate.relative_to(root)
-                except ValueError:
-                    continue
-                return True
-        except (FileNotFoundError, PermissionError, OSError, StopIteration, ValueError):
+            add(os.readlink(entry / link))
+            visible = True
+        except (FileNotFoundError, ProcessLookupError):
             continue
-    return False
+        except PermissionError:
+            continue
+    try:
+        for descriptor in (entry / "fd").iterdir():
+            try:
+                add(os.readlink(descriptor))
+            except FileNotFoundError:
+                continue
+        visible = True
+    except (FileNotFoundError, ProcessLookupError, PermissionError):
+        pass
+    try:
+        for line in (entry / "maps").read_text(encoding="utf-8").splitlines():
+            fields = line.split(maxsplit=5)
+            if len(fields) == 6:
+                add(fields[5])
+        visible = True
+    except (FileNotFoundError, ProcessLookupError, PermissionError):
+        pass
+    try:
+        # Interpreted scripts can close their file after loading.
+        for argument in (entry / "cmdline").read_bytes().split(b"\0"):
+            add(os.fsdecode(argument))
+        visible = True
+    except (FileNotFoundError, ProcessLookupError, PermissionError):
+        pass
+    return references, visible
+
+
+def inspect_tree(
+    path: Path,
+    cutoff: float | None,
+    protected: Callable[[str], bool] | None = None,
+) -> tuple[str, int]:
+    """Check a tree before deletion without following symlinks.
+
+    The tree is eligible only when every entry belongs to this user, is a
+    directory, regular file, or symlink, has no protected name, and, with a
+    cutoff, was modified and changed before the cutoff. Returns the status and
+    the apparent size in bytes.
+    """
+    total = 0
+    uid = os.getuid()
+    pending = [path]
+    while pending:
+        entry = pending.pop()
+        try:
+            info = entry.lstat()
+        except FileNotFoundError:
+            if entry == path:
+                return "missing", 0
+            continue
+        if info.st_uid != uid:
+            return "other-owner", 0
+        if protected is not None and protected(entry.name):
+            return "protected", 0
+        if cutoff is not None and max(info.st_mtime, info.st_ctime) >= cutoff:
+            return "recent", 0
+        if stat.S_ISDIR(info.st_mode):
+            with os.scandir(entry) as children:
+                pending.extend(Path(child.path) for child in children)
+        elif stat.S_ISREG(info.st_mode) or stat.S_ISLNK(info.st_mode):
+            total += info.st_size
+        else:
+            return "special-file", 0
+    return "eligible", total
+
+
+def remove_path(path: Path) -> None:
+    """Delete a file, symlink, or directory tree without following symlinks."""
+    if path.is_symlink() or not path.is_dir():
+        path.unlink()
+    else:
+        shutil.rmtree(path)

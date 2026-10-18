@@ -8,7 +8,6 @@
     <array>
         <string>LIBEXEC_DIR_PLACEHOLDER/python3</string>
         <string>LIBEXEC_DIR_PLACEHOLDER/maintenance.py</string>
-        <string>--updates-only</string>
     </array>
     <key>EnvironmentVariables</key>
     <dict>
@@ -17,6 +16,13 @@
     </dict>
     <key>RunAtLoad</key>
     <false/>
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>3</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
     <key>Nice</key>
     <integer>10</integer>
     <key>LowPriorityIO</key>

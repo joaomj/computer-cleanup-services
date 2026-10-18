@@ -34,10 +34,12 @@ class Terminal:
             os.close(slave)
         self.output = bytearray()
 
-    def read_until(self, marker: bytes | None = None, timeout: float = 20) -> str:
+    def read_until(
+        self, marker: bytes | None = None, timeout: float = 20, count: int = 1
+    ) -> str:
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
-            if marker is not None and marker in self.output:
+            if marker is not None and self.output.count(marker) >= count:
                 return self.output.decode(errors="replace")
             ready, _, _ = select.select(
                 [self.master], [], [], max(0, deadline - time.monotonic())

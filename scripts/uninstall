@@ -24,8 +24,10 @@ case "$(uname -s)" in
         ;;
     Linux)
         SERVICE_NAME="linux-cleanup-service"
+        systemctl --user disable --now linux-cleanup.timer || true
         systemctl --user stop linux-cleanup.service
-        rm -f "${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/linux-cleanup.service"
+        rm -f "${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/linux-cleanup.service" \
+            "${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/linux-cleanup.timer"
         systemctl --user daemon-reload
         if command -v sudo >/dev/null 2>&1; then
             sudo rm -f /etc/sudoers.d/90-linux-cleanup-service

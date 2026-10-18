@@ -6,22 +6,40 @@ Detect the OS in the installer and Python code. Use systemd on Linux and
 launchd on macOS. Keep the installed names `linux-cleanup-service` and
 `macos-cleanup-service`; the shared project is `computer-cleanup-services`.
 
-## Separate Automatic Upgrades from Approved Cleanup
+## Split Cleanup by Risk
 
-Background services cannot ask questions in a terminal. Run upgrades in the
-background, and run cleanup approval in the interactive shell.
-Do not provide an unattended deletion-approval flag.
-Keep separate daily records so declining cleanup does not disable upgrades.
+Low-risk data is regenerable and cheap to restore. The daily pass deletes it
+without a prompt, because a daily prompt for caches trains users to approve
+without reading.
 
-Approval covers explicit cleanup operations. Automatic upgrades still replace
-software files. Disable Homebrew's automatic post-install cleanup so explicit
-cache and old-version cleanup remains behind the approval boundary.
+High-risk data can contain application state or take long to restore. The daily
+pass only lists it. A terminal review asks once per item and records the answer,
+so the same item does not return every day. The review runs only when the
+machine is short of disk space, memory, or swap. With free space, a large
+deletion has no benefit and the prompt only adds noise. Pending items stay
+recorded and are offered when pressure appears. A kept item returns after it grows
+by more than 25%, because its cost to the disk has changed.
 
-## Let Users Select Their Applications
+Approval applies to a specific item, not to a category. The code checks the
+item again before deletion, because state can change between the offer and
+the answer.
 
-Disable optional application maintenance by default. Provide a selection menu
-and plain configuration flags. Selecting an action enables previews, not
-standing permission to delete data.
+## Never Delete Code as a Project Artifact
+
+Project cleanup matches exact folder names and never descends into `.git`.
+It never deletes a folder that Git tracks. It deletes build-output names only
+when Git ignores them, because a folder named `dist` can contain hand-written
+code.
+
+Tool caches (`.venv`, `__pycache__`, `.pytest_cache`, `.ruff_cache`,
+`.mypy_cache`) are regenerable and cheap, so the daily pass deletes them without
+a prompt. `node_modules` and build output can take long to restore or can hold
+hand-written code, so they need a recorded decision.
+
+## Turn On Every Cleanup Action by Default
+
+All cleanup actions are on in a new installation. Missing tools are skipped.
+The risk split, not the action selection, protects stateful data.
 
 ## Preserve Docker Volumes and the Selected Context
 

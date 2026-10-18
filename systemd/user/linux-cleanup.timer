@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily schedule for linux-cleanup.service
+
+[Timer]
+OnCalendar=*-*-* 03:00:00
+RandomizedDelaySec=20min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

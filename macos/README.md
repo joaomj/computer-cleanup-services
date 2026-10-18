@@ -16,10 +16,9 @@ The installer detects macOS, copies runtime files, records the selected Python
 interpreter, registers the LaunchAgent, and adds a hook to the shell selected
 by `SHELL`. The default macOS shell is zsh.
 
-Choose optional actions in the installation menu or run `./scripts/configure`
-later. Explicit cleanup is disabled until selected and always requires Y/N.
-Homebrew upgrades remain automatic. Optional Node.js and Bun upgrades run
-automatically after selection.
+Every cleanup action is on in a new installation. Change the selection in the
+installation menu or with `./scripts/configure`. Homebrew upgrades and low-risk
+cleanup are automatic. High-risk items wait for a recorded decision.
 
 ## Installed Locations
 
@@ -30,20 +29,20 @@ automatically after selection.
 | LaunchAgent | `~/Library/LaunchAgents/com.user.macos-cleanup-service.plist` |
 | Public defaults | `config/macos.conf` in the checkout |
 
-The LaunchAgent runs upgrades only. The shell hook requests cleanup in the
-terminal first, then starts background upgrades. No journal operations run on
-macOS. Homebrew upgrades at most weekly; explicit Homebrew cleanup requires
-selection and approval.
+The LaunchAgent runs the daily pass at 03:00. The shell hook also requests it
+on the first shell of the day, then asks about high-risk items when some wait
+and the system is short of disk space or memory.
+No journal operations run on macOS. Homebrew upgrades at most weekly.
 
 ## Status and Cleanup
 
 ```bash
 ~/.local/libexec/macos-cleanup-service/python3 ~/.local/libexec/macos-cleanup-service/status.py --json
-~/.local/libexec/macos-cleanup-service/python3 ~/.local/libexec/macos-cleanup-service/status.py --cleanup-json
-~/.local/libexec/macos-cleanup-service/python3 ~/.local/libexec/macos-cleanup-service/maintenance.py --cleanup-only --force
+~/.local/libexec/macos-cleanup-service/python3 ~/.local/libexec/macos-cleanup-service/status.py --review-json
+~/.local/libexec/macos-cleanup-service/python3 ~/.local/libexec/macos-cleanup-service/maintenance.py --review --force --ignore-pressure
 ```
 
-To request upgrades through launchd:
+To request the daily pass through launchd:
 
 ```bash
 launchctl start com.user.macos-cleanup-service

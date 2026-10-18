@@ -167,7 +167,7 @@ def render_shell(config: Config) -> str | None:
     ):
         if key not in hidden_keys and key in status:
             parts.append(f"{label} {format_value(status, key)}")
-    # Report reclaimed storage from approved cleanup.
+    # Report storage reclaimed by automatic cleanup.
     # Compact single part so the one-line shell message stays readable.
     reclaimed: list[str] = []
     tmp_bytes = 0
@@ -177,16 +177,9 @@ def render_shell(config: Config) -> str | None:
             tmp_bytes += entry["deleted_bytes"]
     if tmp_bytes > 0:
         reclaimed.append(f"tmp {format_bytes(tmp_bytes)}")
-    artifacts = status.get("project_artifacts")
-    if isinstance(artifacts, dict):
-        deleted = artifacts.get("deleted", 0)
-        deleted_bytes = artifacts.get("deleted_bytes", 0)
-        if isinstance(deleted, int) and isinstance(deleted_bytes, int) and deleted > 0:
-            reclaimed.append(f"projects {format_bytes(deleted_bytes)} ({deleted} dirs)")
     for key, label in (
         ("yarn_cache", "yarn"),
-        ("huggingface_cache", "huggingface"),
-        ("zed_caches", "zed"),
+        ("zed_cache", "zed"),
         ("zed_server", "zed-server"),
     ):
         entry = status.get(key)
@@ -216,8 +209,8 @@ def render_shell(config: Config) -> str | None:
 def main() -> int:
     """Print shell status or JSON status."""
     config = load_config()
-    if len(sys.argv) > 1 and sys.argv[1] == "--cleanup-json":
-        path = config.state_dir / "cleanup-status.json"
+    if len(sys.argv) > 1 and sys.argv[1] == "--review-json":
+        path = config.state_dir / "review-status.json"
         try:
             record = json.loads(path.read_text(encoding="utf-8"))
         except FileNotFoundError:

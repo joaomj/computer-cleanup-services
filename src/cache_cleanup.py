@@ -11,12 +11,13 @@ from pathlib import Path
 from typing import Callable
 
 from common import (
+    ProcessPaths,
     mark_skipped,
     measure_path,
     permission_limited,
     process_is_running,
-    process_uses_path,
     run_command,
+    tool_path,
 )
 from config import Config, format_bytes
 
@@ -41,7 +42,7 @@ def dir_oldest_mtime_hours(path: Path, now: datetime) -> float | None:
         if not path.exists():
             return None
         # Fast path: use find to avoid walking 20k files in Python.
-        find = shutil.which("find")
+        find = tool_path("find", "/usr/bin/find", "/bin/find")
         if find and path.is_dir():
             code, stdout, _ = (124, "", "")
             try:
@@ -228,6 +229,9 @@ def prune_dir_by_age(
     except OSError as error:
         warnings.append(f"{label} inspection failed: {error}")
         return result
+    # One process snapshot per phase: capturing per entry is slow with lsof.
+    snapshot = ProcessPaths.capture()
+    eligible: list[tuple[Path, int]] = []
     for child in children:
         try:
             if child.is_symlink():
@@ -237,18 +241,22 @@ def prune_dir_by_age(
                 mtime = child.stat().st_mtime
             except FileNotFoundError:
                 continue
-            if mtime >= cutoff:
+            if mtime >= cutoff or snapshot.uses(child):
                 result["kept"] += 1
                 continue
-            if process_uses_path(child):
-                result["kept"] += 1
-                continue
-            size = measure_path(child)
-            if dry_run:
-                result["deleted"] += 1
-                result["deleted_bytes"] += size
-                continue
-            if process_uses_path(child):
+            eligible.append((child, measure_path(child)))
+        except PermissionError:
+            mark_skipped(skipped, f"{label} cleanup")
+        except OSError as error:
+            warnings.append(f"{label} inspection failed for {child.name}: {error}")
+    if dry_run:
+        result["deleted"] = len(eligible)
+        result["deleted_bytes"] = sum(size for _, size in eligible)
+        return result
+    snapshot = ProcessPaths.capture()
+    for child, size in eligible:
+        try:
+            if snapshot.uses(child):
                 result["kept"] += 1
                 continue
             if child.is_file():
@@ -260,6 +268,8 @@ def prune_dir_by_age(
                 continue
             result["deleted"] += 1
             result["deleted_bytes"] += size
+        except FileNotFoundError:
+            continue
         except PermissionError:
             mark_skipped(skipped, f"{label} cleanup")
         except OSError as error:
@@ -353,162 +363,23 @@ def clean_yarn_cache(
     )
 
 
-def clean_playwright_cache(
+def clean_zed_cache(
     config: Config,
     now: datetime,
     dry_run: bool,
     warnings: list[str],
     skipped: list[str],
 ) -> dict[str, int]:
-    """Daily Playwright browser cleanup. Age-based, skips in-use."""
-    if not bool(getattr(config, "playwright_cleanup_enabled", True)):
-        return {"deleted": 0, "deleted_bytes": 0, "kept": 0}
-    pw_path: Path = getattr(
-        config, "playwright_cache", Path.home() / ".cache" / "ms-playwright"
-    )
-    max_age = int(getattr(config, "cache_max_age_hours", 24))
+    """Prune old, unused Zed cache entries. Zed saved data is high-risk."""
     return prune_dir_by_age(
-        pw_path, max_age, now, dry_run, warnings, skipped, "playwright cache"
+        config.zed_cache,
+        config.cache_max_age_hours,
+        now,
+        dry_run,
+        warnings,
+        skipped,
+        "zed cache",
     )
-
-
-def clean_zed_caches(
-    config: Config,
-    now: datetime,
-    dry_run: bool,
-    warnings: list[str],
-    skipped: list[str],
-) -> dict[str, int]:
-    """Daily Zed data and cache cleanup. Keeps dir, prunes old entries."""
-    if not bool(getattr(config, "zed_cleanup_enabled", True)):
-        return {"deleted": 0, "deleted_bytes": 0, "kept": 0}
-    max_age = int(getattr(config, "cache_max_age_hours", 24))
-    total = {"deleted": 0, "deleted_bytes": 0, "kept": 0}
-    for label, p in (
-        (
-            "zed data",
-            getattr(config, "zed_data", Path.home() / ".local" / "share" / "zed"),
-        ),
-        ("zed cache", getattr(config, "zed_cache", Path.home() / ".cache" / "zed")),
-    ):
-        r = prune_dir_by_age(Path(p), max_age, now, dry_run, warnings, skipped, label)
-        total["deleted"] += r["deleted"]
-        total["deleted_bytes"] += r["deleted_bytes"]
-        total["kept"] += r["kept"]
-    return total
-
-
-def clean_huggingface_cache(
-    config: Config,
-    now: datetime,
-    dry_run: bool,
-    warnings: list[str],
-    skipped: list[str],
-) -> dict[str, int]:
-    """Daily HuggingFace hub cleanup. Deletes orphaned blobs and stale partial downloads.
-
-    Blobs referenced by a snapshot symlink are live models and are never
-    deleted, regardless of age. Only unreferenced blobs and `.incomplete`
-    files older than the 24h rule and not in use are removed. refs/ metadata
-    and non-hub content (xet/, tokens) are left alone.
-    """
-    if not bool(getattr(config, "huggingface_cleanup_enabled", True)):
-        return {"deleted": 0, "deleted_bytes": 0, "kept": 0}
-    root: Path = getattr(
-        config, "huggingface_cache", Path.home() / ".cache" / "huggingface"
-    )
-    max_age = int(getattr(config, "cache_max_age_hours", 24))
-    result = {"deleted": 0, "deleted_bytes": 0, "kept": 0}
-    try:
-        hub = Path(root) / "hub"
-        if not hub.is_dir() or hub.is_symlink():
-            return result
-        model_dirs = [
-            child
-            for child in hub.iterdir()
-            if child.is_dir()
-            and not child.is_symlink()
-            and child.name.startswith("models--")
-        ]
-    except PermissionError:
-        mark_skipped(skipped, "huggingface cache inspection")
-        return result
-    except OSError as error:
-        warnings.append(f"huggingface cache inspection failed: {error}")
-        return result
-    # Blobs referenced by snapshot symlinks are live model files.
-    referenced: set[str] = set()
-    for model in model_dirs:
-        snapshots = model / "snapshots"
-        try:
-            if not snapshots.exists():
-                continue
-            if snapshots.is_symlink() or not snapshots.is_dir():
-                raise RuntimeError(
-                    f"refusing uninspectable Hugging Face snapshot root: {snapshots}"
-                )
-            pending = [snapshots]
-            while pending:
-                directory = pending.pop()
-                for entry in directory.iterdir():
-                    if entry.is_symlink():
-                        if entry.is_dir():
-                            raise RuntimeError(
-                                f"refusing snapshot directory symlink: {entry}"
-                            )
-                        referenced.add(entry.readlink().name)
-                    elif entry.is_dir():
-                        pending.append(entry)
-        except PermissionError:
-            mark_skipped(skipped, "huggingface snapshot inspection; no blobs removed")
-            return result
-        except OSError as error:
-            raise RuntimeError(
-                f"Hugging Face snapshot inspection failed; no blobs removed: {snapshots}: {error}"
-            ) from error
-    cutoff = now.timestamp() - max_age * 3600
-    for model in model_dirs:
-        try:
-            blobs = model / "blobs"
-            if not blobs.is_dir() or blobs.is_symlink():
-                continue
-            entries = list(blobs.iterdir())
-        except PermissionError:
-            mark_skipped(skipped, "huggingface cache inspection")
-            return result
-        except OSError:
-            continue
-        for entry in entries:
-            try:
-                if (
-                    entry.name in referenced
-                    or entry.is_symlink()
-                    or not entry.is_file()
-                ):
-                    result["kept"] += 1
-                    continue
-                try:
-                    mtime = entry.stat().st_mtime
-                except FileNotFoundError:
-                    continue
-                if mtime >= cutoff or process_uses_path(entry):
-                    result["kept"] += 1
-                    continue
-                size = measure_path(entry)
-                if not dry_run:
-                    if process_uses_path(entry):
-                        result["kept"] += 1
-                        continue
-                    entry.unlink()
-                result["deleted"] += 1
-                result["deleted_bytes"] += size
-            except PermissionError:
-                mark_skipped(skipped, "huggingface cache cleanup")
-            except OSError as error:
-                warnings.append(
-                    f"huggingface cache cleanup failed for {entry.name}: {error}"
-                )
-    return result
 
 
 def clean_zed_server(
@@ -571,18 +442,16 @@ def clean_zed_server(
     victims = installs[: max(0, len(installs) - keep)]
     result["kept"] += len(installs) - len(victims)
     cutoff = now.timestamp() - max_age * 3600
+    snapshot = ProcessPaths.capture()
     for mtime, _, victim in victims:
         try:
-            if mtime >= cutoff or process_uses_path(victim):
+            if mtime >= cutoff or snapshot.uses(victim):
                 result["kept"] += 1
                 continue
             size = measure_path(victim)
             if dry_run:
                 result["deleted"] += 1
                 result["deleted_bytes"] += size
-                continue
-            if process_uses_path(victim):
-                result["kept"] += 1
                 continue
             if victim.is_file():
                 victim.unlink()

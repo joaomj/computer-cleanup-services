@@ -27,8 +27,16 @@ Run the existing test suite when required:
 ./scripts/verify
 ```
 
-Tests exercise configuration, cleanup, updates, and status reporting.
-Do not run installers as development checks: they change the host.
+Tests cover configuration, cleanup, updates, status reporting, installation,
+and shell startup. End-to-end tests create a temporary home, run the command
+line, and answer the review prompt through a pseudo-terminal. They delete only
+files inside that temporary home. Use an age threshold of `0` in tests to make
+fresh files eligible, and a disk threshold of `0` to act as a machine under
+pressure.
+
+Do not run installers as development checks: they change the host. The
+installation test runs the installer with intercepted service managers and a
+temporary home.
 The optional SSH integration also requires a live check with an unlocked desktop
 keyring and an authenticated Proton account. Verify authentication and signing
 after a fresh graphical login before claiming reboot persistence.

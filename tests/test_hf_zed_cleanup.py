@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Black-box checks for HuggingFace hub GC, Zed server GC, and UV size reporting."""
+"""Black-box checks for Zed server GC and UV size reporting."""
 
 from __future__ import annotations
 
@@ -16,7 +16,8 @@ ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
 sys.path.insert(0, str(SRC))
 
-from cleanup import clean_huggingface_cache, clean_zed_server, prune_uv_cache
+from cleanup import clean_zed_server, prune_uv_cache
+from common import ProcessPaths
 from config import SERVICE_NAME, load_config
 
 
@@ -62,99 +63,6 @@ def backdate(path: Path, days_old: float) -> None:
     os.utime(path, (stamp, stamp))
 
 
-class HuggingfaceCacheTest(unittest.TestCase):
-    def build_hub(self, hub: Path) -> dict[str, Path]:
-        """Create a fake hub with one live model and orphaned blobs."""
-        live_blobs = hub / "models--org--live" / "blobs"
-        live_snap = hub / "models--org--live" / "snapshots" / "rev1"
-        live_blobs.mkdir(parents=True)
-        live_snap.mkdir(parents=True)
-        live = live_blobs / "sha-live"
-        live.write_bytes(b"x" * 1024)
-        (live_snap / "weights").mkdir()
-        (live_snap / "weights" / "model.safetensors").symlink_to(
-            "../../../blobs/sha-live"
-        )
-        orphan_old = live_blobs / "sha-orphan-old"
-        orphan_old.write_bytes(b"y" * 2048)
-        backdate(orphan_old, 3)
-        orphan_fresh = live_blobs / "sha-orphan-fresh"
-        orphan_fresh.write_bytes(b"z" * 512)
-        stale_partial = live_blobs / "sha-partial.incomplete"
-        stale_partial.write_bytes(b"p" * 256)
-        backdate(stale_partial, 5)
-        dangling = hub / "models--org--gone" / "refs"
-        dangling.mkdir(parents=True)
-        return {
-            "live": live,
-            "orphan_old": orphan_old,
-            "orphan_fresh": orphan_fresh,
-            "stale_partial": stale_partial,
-        }
-
-    def test_gc_keeps_live_blobs_and_deletes_stale_orphans(self) -> None:
-        """Delete only unreferenced blobs older than the 24h rule."""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            config, original = make_config(root, root / "home")
-            try:
-                hub = Path(config.huggingface_cache) / "hub"
-                files = self.build_hub(hub)
-                backdate(files["live"], 30)
-                with patch("cache_cleanup.process_uses_path", return_value=False):
-                    result = clean_huggingface_cache(
-                        config, datetime.now().astimezone(), False, [], []
-                    )
-                self.assertTrue(files["live"].exists())
-                self.assertTrue(files["orphan_fresh"].exists())
-                self.assertFalse(files["orphan_old"].exists())
-                self.assertFalse(files["stale_partial"].exists())
-                self.assertEqual(result["deleted"], 2)
-                # du reports on-disk blocks, so usage meets or exceeds logical size.
-                self.assertGreaterEqual(result["deleted_bytes"], 2048 + 256)
-                self.assertEqual(result["kept"], 2)
-            finally:
-                restore_env(original)
-
-    def test_dry_run_deletes_nothing(self) -> None:
-        """Count victims without removing them on a dry run."""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            config, original = make_config(root, root / "home")
-            try:
-                hub = Path(config.huggingface_cache) / "hub"
-                files = self.build_hub(hub)
-                with patch("cache_cleanup.process_uses_path", return_value=False):
-                    result = clean_huggingface_cache(
-                        config, datetime.now().astimezone(), True, [], []
-                    )
-                self.assertTrue(files["orphan_old"].exists())
-                self.assertEqual(result["deleted"], 2)
-            finally:
-                restore_env(original)
-
-    def test_disabled_and_missing_hub_do_nothing(self) -> None:
-        """Honor the kill switch and tolerate a missing cache."""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            config, original = make_config(
-                root, root / "home", "HUGGINGFACE_CLEANUP_ENABLED=false\n"
-            )
-            try:
-                now = datetime.now().astimezone()
-                self.assertEqual(
-                    clean_huggingface_cache(config, now, False, [], []),
-                    {"deleted": 0, "deleted_bytes": 0, "kept": 0},
-                )
-                config_on, _ = make_config(root, root / "home")
-                self.assertEqual(
-                    clean_huggingface_cache(config_on, now, False, [], []),
-                    {"deleted": 0, "deleted_bytes": 0, "kept": 0},
-                )
-            finally:
-                restore_env(original)
-
-
 class ZedServerTest(unittest.TestCase):
     def build_server(self, server: Path, names_ages: list[tuple[str, float]]) -> None:
         """Create fake versioned server installs with staggered mtimes."""
@@ -182,7 +90,7 @@ class ZedServerTest(unittest.TestCase):
                     ],
                 )
                 (server / "notes.txt").write_text("keep me", encoding="utf-8")
-                with patch("cache_cleanup.process_uses_path", return_value=False):
+                with patch("cache_cleanup.ProcessPaths.capture", return_value=ProcessPaths(set(), False)):
                     result = clean_zed_server(
                         config, datetime.now().astimezone(), False, [], []
                     )
@@ -210,7 +118,7 @@ class ZedServerTest(unittest.TestCase):
                         ("zed-remote-server-stable-3", 0.01),
                     ],
                 )
-                with patch("cache_cleanup.process_uses_path", return_value=False):
+                with patch("cache_cleanup.ProcessPaths.capture", return_value=ProcessPaths(set(), False)):
                     result = clean_zed_server(
                         config, datetime.now().astimezone(), False, [], []
                     )
@@ -251,7 +159,7 @@ class ZedServerTest(unittest.TestCase):
                     entry = server / name
                     entry.write_bytes(b"b" * 2048)
                     backdate(entry, days_old)
-                with patch("cache_cleanup.process_uses_path", return_value=False):
+                with patch("cache_cleanup.ProcessPaths.capture", return_value=ProcessPaths(set(), False)):
                     result = clean_zed_server(
                         config, datetime.now().astimezone(), False, [], []
                     )

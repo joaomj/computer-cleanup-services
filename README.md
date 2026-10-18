@@ -1,37 +1,46 @@
 # computer-cleanup-services
 
-Daily maintenance for Linux and macOS. System upgrades run automatically.
-Cleanup deletions require approval in an interactive terminal.
+Daily maintenance for Linux and macOS. Upgrades and low-risk cleanup run
+automatically. High-risk cleanup asks once per item, records the answer, and
+prompts only when the system is short of disk space or memory.
 
 The maintenance code supports two platform services:
 
-- Linux: `linux-cleanup.service`, stored under `linux-cleanup-service`.
+- Linux: `linux-cleanup.service` and `linux-cleanup.timer`, stored under
+  `linux-cleanup-service`.
 - macOS: `com.user.macos-cleanup-service`, stored under `macos-cleanup-service`.
 
 ## How It Works
 
-The first interactive shell of the day offers cleanup for the actions you
-selected. The shell shows enabled scopes and a preview, then waits for Y/N.
-Only Y authorizes cleanup. Enter, N, closed input, or no terminal means no
-deletion. There is no unattended approval flag.
+The daily pass runs at 03:00 and when the first shell of the day opens.
+It runs at most once per local calendar day. The pass does these steps:
 
-After the cleanup decision, the shell starts automatic upgrades in the
-background. Update and cleanup records have separate daily gates.
-If maintenance is already running, cleanup waits for a later shell or a
-manual request; it does not interrupt the running job.
+1. Runs package upgrades.
+2. Deletes low-risk data without a prompt. Low-risk data is regenerable:
+   package-manager caches, old temporary files, and similar data.
+3. Finds high-risk candidates and stores the undecided ones for review.
+   High-risk data can contain application state or take long to restore.
 
-Application-specific maintenance is opt-in. Nothing assumes that you use
-Brave, Zed, Hugging Face, Docker, or a particular developer tool.
-APT and Snap updates on Linux and Homebrew updates on macOS remain enabled
-when the relevant tools are available. Verified Node.js and Bun upgrades are
-optional; once selected, they run automatically.
+When an interactive shell opens, items wait for review, and the system is
+short of resources, the shell asks about each item. The prompt appears when the
+disk is at least `HIGH_RISK_REVIEW_DISK_PERCENT` full, available memory is
+below `HIGH_RISK_REVIEW_MEMORY_PERCENT`, or swap is at least 90% used.
+Otherwise the items wait for a later day. That way a large cleanup is offered
+when it helps, not every day.
+
+Enter `y` to delete, `n` or Enter to keep, or `q` to stop. Every answer is
+recorded. A kept item is offered again only when it grows by
+more than 25%. When no items wait, the shell does not prompt.
+
+The pass checks each high-risk item again immediately before deletion. An item
+that is now in use, recent, tracked by Git, or changed in another way is kept.
 
 ## Requirements
 
 - Python 3.10 or later on `PATH`, Bash, and Git.
 - Linux with a systemd user manager, or macOS with launchd.
-- An interactive Bash or zsh shell for the startup hook.
-- Tools for the optional actions you select.
+- An interactive Bash or zsh shell for the startup hook and review prompt.
+- Tools for the actions you use. Actions for missing tools are skipped.
 - GnuPG tools and Apple Silicon if you enable verified macOS runtime upgrades.
 
 Linux package upgrades support APT and Snap, not every distribution's package
@@ -47,23 +56,16 @@ cd computer-cleanup-services
 ```
 
 The installer selects the operating system, copies the code, registers the
-service, and adds a shell startup hook. It offers an optional-action menu.
-Choose only the applications and cleanup scopes you want to manage.
-Choosing an action enables previews; it does not authorize future deletions.
-
-If you skip the menu, optional actions stay disabled on a new installation.
-Existing configuration is preserved. Change the selection later with:
+service and daily schedule, and adds a shell startup hook. Every cleanup action
+is on in a new installation. Existing configuration is preserved.
+The installer offers an action menu. Change the selection later with:
 
 ```bash
 ./scripts/configure
 ```
 
-Use `./scripts/upgrade` to request background upgrades and print the progress-log command.
-See [operations](docs/operations.md#request-upgrades) for scheduling and timeout behavior.
-
-Open a new shell to request maintenance. Shell startup waits for a cleanup
-response when cleanup actions are enabled. Upgrades run in the background
-and do not require cleanup approval.
+Use `./scripts/upgrade` to request the daily pass and print the progress-log command.
+See [operations](docs/operations.md#request-the-daily-pass) for scheduling and timeout behavior.
 
 ## Configuration
 
@@ -85,55 +87,83 @@ and preserves other settings.
 Read the [configuration reference](docs/configuration.md) for flags, paths,
 thresholds, and update settings.
 
-## Inspect or Request Cleanup
+## Inspect, Review, and Check Results
 
-From a checkout, preview enabled actions without upgrades or cleanup deletions:
+From a checkout, preview the daily pass without upgrades or deletions:
 
 ```bash
 python3 src/maintenance.py --dry-run --force
 ```
 
-Request cleanup and answer its Y/N prompt:
+Review waiting high-risk items now, even after a review earlier today, and
+even when the system has free space:
 
 ```bash
-python3 src/maintenance.py --cleanup-only --force
+python3 src/maintenance.py --review --force --ignore-pressure
 ```
 
-On Linux, inspect update and cleanup results:
+A review without pressure does not prompt. It records `deferred` in
+`review-status.json` and keeps the items pending.
+
+On Linux, inspect the daily pass and the last review:
 
 ```bash
 ~/.local/libexec/linux-cleanup-service/python3 ~/.local/libexec/linux-cleanup-service/status.py --json
-~/.local/libexec/linux-cleanup-service/python3 ~/.local/libexec/linux-cleanup-service/status.py --cleanup-json
+~/.local/libexec/linux-cleanup-service/python3 ~/.local/libexec/linux-cleanup-service/status.py --review-json
 ```
 
 On macOS, replace `linux-cleanup-service` with `macos-cleanup-service`.
-A dry run can create the private state directory and lock file. It does not
-run upgrades, cleanup commands, or journal vacuuming.
+A dry run can create the private state directory and lock file.
+
+## Risk Levels
+
+Low-risk cleanup runs without a prompt:
+
+- uv, npm, and Yarn caches.
+- Brave cache above `BRAVE_CACHE_MAX_SIZE`, only when Brave is stopped.
+- Zed cache, and old Zed remote servers. The newest two servers remain.
+- Old Homebrew versions and downloads on macOS; the APT package cache on Linux.
+- Old, unused `/tmp` entries that this user owns. Credential, socket, session,
+  and agent entries are never deleted.
+- Archived journals above `JOURNAL_WARN_SIZE` on Linux.
+- Stopped Docker containers and Docker build cache older than 24 hours.
+- Tool caches in projects: `.venv`, `__pycache__`, `.pytest_cache`,
+  `.ruff_cache`, and `.mypy_cache`, after `PROJECT_CACHE_MAX_AGE_HOURS`.
+
+High-risk cleanup needs a recorded decision, and the prompt appears only when
+the system is short of disk space or memory:
+
+- Zed saved data, which can contain settings, history, and threads.
+- Unreferenced Hugging Face model downloads.
+- Downloaded Playwright browsers.
+- Node dependencies and build folders in `PROJECT_ROOT`, grouped by project.
+- Docker images that no container uses, and unused Docker networks.
+
+Project cleanup touches only folders with these exact names: `node_modules`,
+`.venv`, `__pycache__`, `.pytest_cache`, `.ruff_cache`, `.mypy_cache`, `dist`,
+`.next`, `.nx`, and `coverage`. It never deletes a folder that Git tracks.
+It deletes `dist`, `.next`, `.nx`, and `coverage` only when Git ignores them,
+because unignored build output can be hand-written code. A project with a
+running program inside it is skipped.
 
 ## Safety and Limits
 
-**Warning:** Approved cleanup can permanently delete data. Zed cleanup includes
-its data directory. Project cleanup can remove dependencies and build output.
-Temporary-file cleanup removes old user-owned entries. Docker cleanup removes
-unused containers, images, build cache, and networks, but preserves volumes.
-Keep independent backups and review configured paths before approving cleanup.
+**Warning:** Cleanup permanently deletes data. Low-risk cleanup deletes without
+a prompt. Keep independent backups and review configured paths and thresholds.
 
-The preview provides scopes and estimates, not a fixed file inventory.
-Cleanup checks eligibility again after approval; new eligible entries can be
-included. Cleanup tools can remove more than an age-based file preview shows.
+Every deletion skips data that a program of the same user references. On Linux,
+the check reads `/proc`. If a process cannot be inspected at all, the pass
+deletes nothing that depends on the check. On macOS, the check uses `lsof`.
+Docker volumes are never pruned.
 
-Automatic upgrades replace installed software without asking. The approval
-policy covers explicit cleanup, not files a package manager replaces during
-an upgrade. Homebrew's automatic post-install cleanup is disabled; explicit
-`brew cleanup` requires selection and approval.
+Automatic upgrades replace installed software without asking. Homebrew's
+automatic post-install cleanup is disabled; `brew cleanup` runs as a low-risk
+action instead.
 
-The installer does not change journal retention limits or vacuum journals.
-On Linux it installs narrowly scoped passwordless sudo commands for updates
-and approved cache/journal cleanup. This is privileged access, not a sandbox.
-
-This repository is still being prepared for public distribution. CLI approval
-and isolated installation checks are included. Native service registration and
-Linux host operation still need release validation.
+The installer does not change journal retention limits. On Linux it installs
+narrowly scoped passwordless sudo commands for updates, APT cache cleanup, and
+journal vacuuming. This is privileged access, not a sandbox. Accounts without
+the sudo rule set `SUDO_TASKS_ENABLED=false`.
 
 ## Update and Uninstall
 
