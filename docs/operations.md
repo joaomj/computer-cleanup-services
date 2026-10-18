@@ -57,7 +57,9 @@ sudo loginctl enable-linger <account>
 ```
 
 The installer starts each account's timer. A user manager exists only while the
-account is logged in or lingering is enabled.
+account is logged in or lingering is enabled. When no user manager answers, the
+installer links the timer into `timers.target.wants` instead. The timer starts
+with the manager, so enable lingering first on a host with no active sessions.
 
 ## Select Actions
 

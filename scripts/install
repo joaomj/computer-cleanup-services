@@ -136,8 +136,14 @@ Path(target).write_text(Path(source).read_text().replace("CONFIG_ROOT_PLACEHOLDE
 Path(target).chmod(0o644)
 PYUNIT
     install -m 644 "$ROOT_DIR/systemd/user/linux-cleanup.timer" "$SERVICE_DIR/linux-cleanup.timer"
-    systemctl --user daemon-reload
-    systemctl --user enable --now linux-cleanup.timer
+    if systemctl --user daemon-reload 2>/dev/null; then
+        systemctl --user enable --now linux-cleanup.timer
+    else
+        install -d -m 755 "$SERVICE_DIR/timers.target.wants"
+        ln -sf "$SERVICE_DIR/linux-cleanup.timer" \
+            "$SERVICE_DIR/timers.target.wants/linux-cleanup.timer"
+        printf 'Enabled the timer without a running user manager; it starts with the manager.\n'
+    fi
     if [ "${SKIP_SUDOERS:-0}" = "1" ]; then
         printf 'Skipped the scoped sudo rule (SKIP_SUDOERS=1).\n'
     elif command -v sudo >/dev/null 2>&1; then
