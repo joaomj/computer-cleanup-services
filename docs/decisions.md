@@ -59,6 +59,24 @@ Allow exact APT, Snap, and journal commands for the current user.
 The service uses non-interactive sudo and reports inaccessible tasks as skipped.
 Do not install automatic journal retention limits.
 
+## Use Vendor Security Data per Platform
+
+Use Canonical OVAL definitions for Ubuntu OS packages. They include Ubuntu
+package versions, backported fixes, and CVEs that still need evaluation. A
+generic CVE feed can mark a package vulnerable when Ubuntu has already fixed it,
+or miss an unfixed CVE that Ubuntu tracks. OpenSCAP evaluates the definitions
+against installed packages.
+
+Use OSV for project lockfiles. It supports the package ecosystems in this
+repository and returns the exact versions that a lockfile records. OSV does not
+provide a usable Homebrew ecosystem, so macOS reads `brew vulns`, the native
+Homebrew command backed by OSV.
+
+Do not treat a finding as a repair instruction. The daily pass records findings
+and a required reboot. It does not upgrade project dependencies, remove OS
+packages, or reboot the machine. Those actions change application behavior and
+need a person to choose the time.
+
 ## Verify Optional Runtime Upgrades
 
 For selected Node.js and Bun upgrades, require signed manifests, matching hashes,

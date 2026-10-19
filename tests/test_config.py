@@ -167,6 +167,39 @@ class ConfigurationTest(unittest.TestCase):
             self.assertIn("SystemMaxUse=70M", result.stdout)
             self.assertIn("RuntimeMaxUse=12M", result.stdout)
 
+    def load_security_config(self, extra: str = ""):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_home = root / "config"
+            config_dir = config_home / SERVICE_NAME
+            config_dir.mkdir(parents=True)
+            (config_dir / "environment").write_text(
+                f"COMMAND_TIMEOUT_SECONDS=5\n{extra}", encoding="utf-8"
+            )
+            with (
+                patch.dict(os.environ, {"XDG_CONFIG_HOME": str(config_home)}, clear=True),
+                patch.object(Path, "home", return_value=root / "home"),
+                patch("config.sys.platform", "linux"),
+            ):
+                return load_config()
+
+    def test_security_defaults_and_validation(self) -> None:
+        config = self.load_security_config()
+        self.assertTrue(config.security_scan_enabled)
+        self.assertEqual(config.security_min_severity, "high")
+        self.assertTrue(config.security_scan_projects)
+        self.assertEqual(config.security_project_max_depth, 5)
+        self.assertEqual(config.security_network_timeout_seconds, 30)
+        self.assertEqual(config.security_scan_timeout_seconds, 900)
+        self.assertEqual(config.security_osv_cache_hours, 24)
+
+        self.assertEqual(
+            self.load_security_config("SECURITY_PROJECT_MAX_DEPTH=0\n").security_project_max_depth,
+            0,
+        )
+        with self.assertRaises(ConfigurationError):
+            self.load_security_config("SECURITY_MIN_SEVERITY=moderate\n")
+
     def test_sudoers_config_lists_exact_service_commands(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             env = os.environ.copy()

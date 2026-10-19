@@ -57,9 +57,12 @@ def run_command(
     cwd: Path | None = None,
     *,
     environment: dict[str, str] | None = None,
+    timeout_seconds: int | None = None,
+    quiet: bool = False,
 ) -> tuple[int, str, str]:
     """Stream progress to stderr and bound both command lifetime and captured output."""
-    print(f"[maintenance] Starting: {shlex.join(command)}", file=sys.stderr, flush=True)
+    if not quiet:
+        print(f"[maintenance] Starting: {shlex.join(command)}", file=sys.stderr, flush=True)
     try:
         process = subprocess.Popen(
             command,
@@ -73,7 +76,8 @@ def run_command(
     except OSError as error:
         return 127, "", str(error)
     captured = {"stdout": bytearray(), "stderr": bytearray()}
-    deadline = time.monotonic() + config.command_timeout_seconds
+    effective_timeout = timeout_seconds or config.command_timeout_seconds
+    deadline = time.monotonic() + effective_timeout
     next_notice = time.monotonic() + 15
     timed_out = False
     with selectors.DefaultSelector() as selector:
@@ -100,12 +104,13 @@ def run_command(
                     captured[key.data].extend(chunk)
                     # Keep a bounded tail for status/error reporting.
                     del captured[key.data][: -2 * 1024 * 1024]
-                    print(
-                        chunk.decode("utf-8", errors="replace"),
-                        end="",
-                        file=sys.stderr,
-                        flush=True,
-                    )
+                    if not quiet:
+                        print(
+                            chunk.decode("utf-8", errors="replace"),
+                            end="",
+                            file=sys.stderr,
+                            flush=True,
+                        )
             if not timed_out:
                 try:
                     process.wait(timeout=max(0.01, deadline - time.monotonic()))
@@ -124,14 +129,15 @@ def run_command(
     stdout = captured["stdout"].decode("utf-8", errors="replace").strip()
     stderr = captured["stderr"].decode("utf-8", errors="replace").strip()
     if timed_out:
-        message = f"command timed out after {config.command_timeout_seconds}s; process group terminated"
+        message = f"command timed out after {effective_timeout}s; process group terminated"
         print(f"[maintenance] {message}", file=sys.stderr, flush=True)
         return 124, stdout, f"{stderr}\n{message}".strip()
-    print(
-        f"[maintenance] Finished (exit {process.returncode}): {shlex.join(command)}",
-        file=sys.stderr,
-        flush=True,
-    )
+    if not quiet:
+        print(
+            f"[maintenance] Finished (exit {process.returncode}): {shlex.join(command)}",
+            file=sys.stderr,
+            flush=True,
+        )
     return process.returncode, stdout, stderr
 
 

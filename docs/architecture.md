@@ -10,6 +10,7 @@ The installed service names remain platform-specific.
          +--> maintenance.py (daily pass, once per day)
                 +--> APT/Snap on Linux or Homebrew on macOS
                 +--> optional verified Node.js/Bun upgrades on macOS
+                +--> security scan -> security.json
                 +--> low-risk cleanup, no prompt (caches, temp, tool caches)
                 +--> high-risk discovery -> pending-review.json
                 +--> status.json
@@ -28,7 +29,15 @@ interactive shell, when pending-review.json exists
 - `config.py` validates settings and generates scoped Linux sudo rules.
 - `configure.py` selects actions.
 - `maintenance.py` owns command-line modes, daily gates, and the review prompt.
-- `cleanup.py` runs upgrades and low-risk cleanup, then calls discovery.
+- `cleanup.py` runs upgrades, the security scan, and low-risk cleanup, then
+  calls discovery.
+- `security.py` combines the security sources, filters findings, checks reboot
+  state, and writes `security.json`.
+- `oval.py` evaluates Canonical OVAL definitions with OpenSCAP for Ubuntu OS
+  packages.
+- `osv.py` discovers project lockfiles and queries OSV for dependency
+  vulnerabilities.
+- `homebrew_vulns.py` reads Homebrew findings from `brew vulns`.
 - `cache_cleanup.py` owns low-risk application cache cleanup.
 - `artifacts.py` owns project folder rules and automatic tool-cache cleanup.
 - `high_risk.py` finds high-risk candidates and deletes approved ones after a
@@ -51,6 +60,31 @@ is more than 125% of the recorded size.
 Before each high-risk deletion, the code captures running-program references
 again and checks ownership, age, special files, and Git state for every target.
 A target that fails a check is kept and reported.
+
+## Security Scan
+
+The security scan runs after package upgrades. It collects findings from three
+sources:
+
+- Ubuntu OVAL definitions for installed OS packages and the kernel. The code
+  downloads the feed for the running release, evaluates it with `oscap`, and
+  keeps installed-package results.
+- OSV for lockfiles under `PROJECT_ROOT`. Supported files include npm, pnpm,
+  uv, pip requirements, Poetry, Cargo, Go modules, Bundler, and Composer.
+- Homebrew for installed formulae on macOS through `brew vulns --json`.
+
+Findings below `SECURITY_MIN_SEVERITY` are removed before the code writes
+`security.json`. The record includes source summaries, a reboot status, and a
+combined finding list. The shell status reads the compact summary stored in
+`status.json`.
+
+Linux reboot detection uses `/var/run/reboot-required` and compares the running
+kernel release with the newest installed `linux-image-*` package. The scan does
+not reboot the machine.
+
+Network and scanner failures are recorded per source. A failed source marks the
+overall record `failed` or `partial`; it does not stop cleanup. OSV vulnerability
+details and the OVAL feed are cached in the state directory.
 
 ## Installation Boundary
 

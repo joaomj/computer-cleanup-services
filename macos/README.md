@@ -34,10 +34,16 @@ on the first shell of the day, then asks about high-risk items when some wait
 and the system is short of disk space or memory.
 No journal operations run on macOS. Homebrew upgrades at most weekly.
 
+The daily pass checks Homebrew formulae through `brew vulns` and project
+lockfiles through OSV. It needs Homebrew 7.0 or later. macOS does not use the
+Ubuntu OVAL scan. Findings at or above `SECURITY_MIN_SEVERITY` are written to
+`security.json`; the shell line reports high or critical findings.
+
 ## Status and Cleanup
 
 ```bash
 ~/.local/libexec/macos-cleanup-service/python3 ~/.local/libexec/macos-cleanup-service/status.py --json
+~/.local/libexec/macos-cleanup-service/python3 ~/.local/libexec/macos-cleanup-service/status.py --security-json
 ~/.local/libexec/macos-cleanup-service/python3 ~/.local/libexec/macos-cleanup-service/status.py --review-json
 ~/.local/libexec/macos-cleanup-service/python3 ~/.local/libexec/macos-cleanup-service/maintenance.py --review --force --ignore-pressure
 ```

@@ -30,7 +30,7 @@ else
     exit 1
 fi
 
-PYTHON_BIN="$("$PYTHON_BIN" -c 'import os, sys; print(os.path.realpath(sys.executable))')"
+PYTHON_BIN="$("$PYTHON_BIN" -c 'import os, sys; print(os.path.abspath(sys.argv[1]))' "$PYTHON_BIN")"
 LIBEXEC_DIR="$HOME/.local/libexec/$SERVICE_NAME"
 CONFIG_DIR="$CONFIG_ROOT/$SERVICE_NAME"
 
@@ -41,6 +41,10 @@ install -m 755 "$ROOT_DIR/src/common.py" "$LIBEXEC_DIR/common.py"
 install -m 755 "$ROOT_DIR/src/cache_cleanup.py" "$LIBEXEC_DIR/cache_cleanup.py"
 install -m 755 "$ROOT_DIR/src/runtime_update.py" "$LIBEXEC_DIR/runtime_update.py"
 install -m 755 "$ROOT_DIR/src/cleanup.py" "$LIBEXEC_DIR/cleanup.py"
+install -m 755 "$ROOT_DIR/src/security.py" "$LIBEXEC_DIR/security.py"
+install -m 755 "$ROOT_DIR/src/oval.py" "$LIBEXEC_DIR/oval.py"
+install -m 755 "$ROOT_DIR/src/osv.py" "$LIBEXEC_DIR/osv.py"
+install -m 755 "$ROOT_DIR/src/homebrew_vulns.py" "$LIBEXEC_DIR/homebrew_vulns.py"
 install -m 755 "$ROOT_DIR/src/status.py" "$LIBEXEC_DIR/status.py"
 install -m 755 "$ROOT_DIR/src/state.py" "$LIBEXEC_DIR/state.py"
 install -m 755 "$ROOT_DIR/src/maintenance.py" "$LIBEXEC_DIR/maintenance.py"
@@ -152,8 +156,15 @@ PYUNIT
         "$PYTHON_BIN" "$ROOT_DIR/src/config.py" sudoers-config > "$SUDOERS_TMP"
         sudo visudo -cf "$SUDOERS_TMP"
         sudo install -D -m 440 -o root -g root "$SUDOERS_TMP" /etc/sudoers.d/90-linux-cleanup-service
+        if ! sudo -n -l >/dev/null 2>&1; then
+            printf 'Warning: the scoped sudo rule is installed but sudo -n does not accept it.\n'
+            printf 'Check /etc/sudoers.d/90-linux-cleanup-service or set SUDO_TASKS_ENABLED=false.\n'
+        fi
     else
         printf 'User files installed. Automatic APT/Snap upgrades need scoped sudo access.\n'
+    fi
+    if ! command -v oscap >/dev/null 2>&1; then
+        printf 'OS CVE scanning needs openscap-scanner: sudo apt install openscap-scanner\n'
     fi
     printf 'Installed %s (Linux). The daily pass runs at 03:00 and on the first shell of the day.\n' "$SERVICE_NAME"
 fi

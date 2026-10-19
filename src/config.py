@@ -63,6 +63,17 @@ def parse_positive_int(value: str, name: str) -> int:
     return result
 
 
+def parse_nonnegative_int(value: str, name: str) -> int:
+    """Parse an integer setting that may be zero."""
+    try:
+        result = int(value)
+    except ValueError as error:
+        raise ConfigurationError(f"{name} must be an integer") from error
+    if result < 0:
+        raise ConfigurationError(f"{name} must be zero or greater")
+    return result
+
+
 def parse_age_hours(value: str, name: str) -> int:
     """Parse an age threshold in hours; zero means no minimum age."""
     try:
@@ -82,6 +93,19 @@ def parse_bool(value: str, name: str) -> bool:
     if normalized in FALSE_VALUES:
         return False
     raise ConfigurationError(f"{name} must be true or false")
+
+
+SECURITY_SEVERITIES = ("critical", "high", "medium", "low")
+
+
+def parse_severity(value: str, name: str) -> str:
+    """Parse a minimum security severity."""
+    normalized = value.strip().lower()
+    if normalized not in SECURITY_SEVERITIES:
+        raise ConfigurationError(
+            f"{name} must be one of: {', '.join(SECURITY_SEVERITIES)}"
+        )
+    return normalized
 
 
 def format_bytes(value: int) -> str:
@@ -191,6 +215,13 @@ class Config:
     apt_updates_enabled: bool
     snap_updates_enabled: bool
     sudo_tasks_enabled: bool
+    security_scan_enabled: bool
+    security_min_severity: str
+    security_scan_projects: bool
+    security_project_max_depth: int
+    security_network_timeout_seconds: int
+    security_scan_timeout_seconds: int
+    security_osv_cache_hours: int
 
 
 def load_config() -> Config:
@@ -216,6 +247,9 @@ def load_config() -> Config:
 
     def enabled(name: str, default: str = "false") -> bool:
         return parse_bool(_value(values, name, default), name)
+
+    def severity(name: str, default: str) -> str:
+        return parse_severity(_value(values, name, default), name)
 
     def journal_limit(name: str, default: str) -> str:
         value = _value(values, name, default)
@@ -324,6 +358,20 @@ def load_config() -> Config:
         apt_updates_enabled=enabled("APT_UPDATES_ENABLED", "true"),
         snap_updates_enabled=enabled("SNAP_UPDATES_ENABLED", "true"),
         sudo_tasks_enabled=enabled("SUDO_TASKS_ENABLED", "true"),
+        security_scan_enabled=enabled("SECURITY_SCAN_ENABLED", "true"),
+        security_min_severity=severity("SECURITY_MIN_SEVERITY", "high"),
+        security_scan_projects=enabled("SECURITY_SCAN_PROJECTS", "true"),
+        security_project_max_depth=parse_nonnegative_int(
+            _value(values, "SECURITY_PROJECT_MAX_DEPTH", "5"),
+            "SECURITY_PROJECT_MAX_DEPTH",
+        ),
+        security_network_timeout_seconds=integer(
+            "SECURITY_NETWORK_TIMEOUT_SECONDS", "30"
+        ),
+        security_scan_timeout_seconds=integer(
+            "SECURITY_SCAN_TIMEOUT_SECONDS", "900"
+        ),
+        security_osv_cache_hours=integer("SECURITY_OSV_CACHE_HOURS", "24"),
     )
 
 

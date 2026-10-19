@@ -16,9 +16,11 @@ The daily pass runs at 03:00 and when the first shell of the day opens.
 It runs at most once per local calendar day. The pass does these steps:
 
 1. Runs package upgrades.
-2. Deletes low-risk data without a prompt. Low-risk data is regenerable:
+2. Checks OS packages, project dependencies, and Homebrew for known
+   vulnerabilities. It also records whether a reboot is required.
+3. Deletes low-risk data without a prompt. Low-risk data is regenerable:
    package-manager caches, old temporary files, and similar data.
-3. Finds high-risk candidates and stores the undecided ones for review.
+4. Finds high-risk candidates and stores the undecided ones for review.
    High-risk data can contain application state or take long to restore.
 
 When an interactive shell opens, items wait for review, and the system is
@@ -41,6 +43,9 @@ that is now in use, recent, tracked by Git, or changed in another way is kept.
 - Linux with a systemd user manager, or macOS with launchd.
 - An interactive Bash or zsh shell for the startup hook and review prompt.
 - Tools for the actions you use. Actions for missing tools are skipped.
+- `openscap-scanner` on Linux for OS CVE checks. Project checks still run
+  without it.
+- Homebrew 7.0 or later on macOS for `brew vulns` checks.
 - GnuPG tools and Apple Silicon if you enable verified macOS runtime upgrades.
 
 Linux package upgrades support APT and Snap, not every distribution's package
@@ -105,15 +110,59 @@ python3 src/maintenance.py --review --force --ignore-pressure
 A review without pressure does not prompt. It records `deferred` in
 `review-status.json` and keeps the items pending.
 
-On Linux, inspect the daily pass and the last review:
+On Linux, inspect the daily pass, the security report, and the last review:
 
 ```bash
 ~/.local/libexec/linux-cleanup-service/python3 ~/.local/libexec/linux-cleanup-service/status.py --json
+~/.local/libexec/linux-cleanup-service/python3 ~/.local/libexec/linux-cleanup-service/status.py --security-json
 ~/.local/libexec/linux-cleanup-service/python3 ~/.local/libexec/linux-cleanup-service/status.py --review-json
 ```
 
 On macOS, replace `linux-cleanup-service` with `macos-cleanup-service`.
 A dry run can create the private state directory and lock file.
+
+The shell line reports high or critical security findings and a required
+reboot. Other cleanup details remain in the JSON output.
+
+## Security Monitoring
+
+The daily pass checks three sources after package upgrades:
+
+- Ubuntu OS packages and the kernel with Canonical OVAL and OpenSCAP. It
+  reports installed packages affected by known CVEs, including CVEs without a
+  published fix.
+- Project lockfiles under `PROJECT_ROOT` with OSV.
+- Homebrew formulae on macOS with `brew vulns`.
+
+The pass records findings at or above `SECURITY_MIN_SEVERITY` (default `high`)
+in `security.json`. It also records whether a reboot is required to activate an
+installed kernel or other update. The shell line shows a warning when the last
+pass found a high or critical issue, or when a reboot is required.
+
+The scanner reports findings. It does not upgrade project dependencies or
+remove affected packages.
+
+Limits:
+
+- OS scanning supports Ubuntu only.
+- Project scanning parses npm, pnpm, uv, pip requirements, Poetry, Cargo, Go
+  modules, Bundler, and Composer lockfiles. It does not parse `yarn.lock` or
+  `Pipfile.lock` yet.
+- OSV and Canonical feeds need network access. Results are cached in the state
+  directory. A failed source does not stop cleanup; it is recorded as failed or
+  partial.
+- The scan does not replace Ubuntu Pro Livepatch. Livepatch can apply kernel
+  fixes without a reboot when Canonical publishes them. This scan reports
+  affected packages before a fix exists.
+
+Run only the security scan from the installed copy:
+
+```bash
+~/.local/libexec/linux-cleanup-service/python3 ~/.local/libexec/linux-cleanup-service/security.py
+```
+
+From a checkout, run `python3 src/security.py`. The command prints the summary
+and writes `security.json`.
 
 ## Risk Levels
 
@@ -159,6 +208,11 @@ Docker volumes are never pruned.
 Automatic upgrades replace installed software without asking. Homebrew's
 automatic post-install cleanup is disabled; `brew cleanup` runs as a low-risk
 action instead.
+
+Security findings are advisory. The pass does not upgrade project dependencies,
+remove affected packages, or reboot the machine. Review and apply those changes
+yourself. A reported reboot remains pending until you reboot.
+
 
 The installer does not change journal retention limits. On Linux it installs
 narrowly scoped passwordless sudo commands for updates, APT cache cleanup, and

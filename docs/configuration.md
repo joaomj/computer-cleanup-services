@@ -54,6 +54,49 @@ APT and Snap use non-interactive `sudo`. Homebrew runs as the user.
 Homebrew upgrades at most weekly; the interval is not a minimum package release
 age. The service disables Homebrew's automatic post-install cleanup.
 
+## Security Monitoring
+
+The daily pass checks OS packages, project lockfiles, and Homebrew for known
+vulnerabilities after package upgrades. The checks do not use `sudo`.
+
+| Setting | Default | Meaning |
+| --- | --- | --- |
+| `SECURITY_SCAN_ENABLED` | `true` | Run the daily security scan. |
+| `SECURITY_MIN_SEVERITY` | `high` | Minimum severity stored and shown: `critical`, `high`, `medium`, or `low`. |
+| `SECURITY_SCAN_PROJECTS` | `true` | Scan lockfiles under `PROJECT_ROOT`. |
+| `SECURITY_PROJECT_MAX_DEPTH` | `5` | Maximum directory depth below `PROJECT_ROOT`. `0` scans only the root. |
+| `SECURITY_NETWORK_TIMEOUT_SECONDS` | `30` | Timeout for each metadata or API request. |
+| `SECURITY_SCAN_TIMEOUT_SECONDS` | `900` | Timeout for the OpenSCAP evaluation and `brew vulns`. |
+| `SECURITY_OSV_CACHE_HOURS` | `24` | Reuse OSV vulnerability details for this many hours. |
+
+On Linux, install `openscap-scanner` for OS checks:
+
+```bash
+sudo apt install openscap-scanner
+```
+
+Without OpenSCAP, the OS source reports `unavailable`; project checks continue.
+The pass downloads the Canonical OVAL feed for the running Ubuntu release and
+caches it in the state directory. The decompressed feed is large; allow disk
+space for it.
+
+Project scanning reads lockfiles under `PROJECT_ROOT`. It supports
+`package-lock.json`, `pnpm-lock.yaml`, `requirements.txt`, `uv.lock`,
+`poetry.lock`, `Cargo.lock`, `go.sum`, `Gemfile.lock`, and `composer.lock`.
+It does not parse `yarn.lock` or `Pipfile.lock` yet.
+
+`SECURITY_MIN_SEVERITY` filters findings before the pass writes
+`security.json`. Set it to `medium` to include medium findings. A reboot check
+runs on Linux regardless of the finding count. The pass reports a required
+reboot but does not reboot the machine.
+
+On macOS, Homebrew checks need Homebrew 7.0 or later. Run `brew vulns --json`
+to check the command directly. Homebrew coverage depends on the advisory data
+that OSV provides to Homebrew.
+
+The scan is advisory. It does not upgrade project dependencies, remove affected
+packages, or replace Ubuntu Pro Livepatch.
+
 ## Cleanup Thresholds
 
 | Setting | Default | Meaning |

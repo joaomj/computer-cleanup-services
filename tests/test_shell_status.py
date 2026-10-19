@@ -92,6 +92,59 @@ class ShellStatusTest(unittest.TestCase):
         self.assertIn("APT", line)
         self.assertNotIn("Homebrew", line)
 
+    def test_security_findings_and_reboot_are_surfaced(self) -> None:
+        line = self.render_with(
+            {
+                "status": "success",
+                "security": {
+                    "status": "findings",
+                    "critical": 2,
+                    "high": 3,
+                    "reboot_required": False,
+                    "first": {"id": "CVE-2026-99999", "package": "linux"},
+                },
+            }
+        )
+        self.assertIsNotNone(line)
+        self.assertIn("2 critical", line)
+        self.assertIn("3 high", line)
+        self.assertIn("CVE-2026-99999", line)
+        self.assertIn("linux", line)
+
+        reboot = self.render_with(
+            {
+                "status": "success",
+                "security": {
+                    "status": "ok",
+                    "critical": 0,
+                    "high": 0,
+                    "reboot_required": True,
+                },
+            }
+        )
+        self.assertIn("reboot required", reboot)
+
+        failed = self.render_with(
+            {
+                "status": "success",
+                "security": {"status": "failed", "reason": "OSV request failed"},
+            }
+        )
+        self.assertIn("security check failed", failed)
+        self.assertIn("OSV request failed", failed)
+
+        self.assertIsNone(
+            self.render_with(
+                {
+                    "status": "success",
+                    "security": {
+                        "status": "unavailable",
+                        "reason": "install openscap-scanner",
+                    },
+                }
+            )
+        )
+
     def run_execute(self, platform: str) -> dict:
         """Run a dry-run pass isolated from the real home and state."""
         with tempfile.TemporaryDirectory() as temp_dir:

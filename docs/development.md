@@ -27,9 +27,11 @@ Run the existing test suite when required:
 ./scripts/verify
 ```
 
-Tests cover configuration, cleanup, updates, status reporting, installation,
-and shell startup. End-to-end tests create a temporary home, run the command
-line, and answer the review prompt through a pseudo-terminal. They delete only
+Tests cover configuration, cleanup, updates, security scanning, status
+reporting, installation, and shell startup. Security tests parse synthetic
+lockfiles and OVAL XML and use a fake Homebrew command; they do not use the
+network. End-to-end tests create a temporary home, run the command line, and
+answer the review prompt through a pseudo-terminal. They delete only
 files inside that temporary home. Use an age threshold of `0` in tests to make
 fresh files eligible, and a disk threshold of `0` to act as a machine under
 pressure.

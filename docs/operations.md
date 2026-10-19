@@ -81,11 +81,37 @@ Review paths and thresholds before enabling application cleanup.
 
 ```bash
 ~/.local/libexec/linux-cleanup-service/python3 ~/.local/libexec/linux-cleanup-service/status.py --json
+~/.local/libexec/linux-cleanup-service/python3 ~/.local/libexec/linux-cleanup-service/status.py --security-json
 ~/.local/libexec/linux-cleanup-service/python3 ~/.local/libexec/linux-cleanup-service/status.py --review-json
 ```
 
-The first command shows the daily pass. The second shows the last review.
-Shell status stays silent unless the last daily pass failed.
+The first command shows the daily pass. The second shows the last security
+scan. The third shows the last review. Shell status stays silent unless the
+last daily pass failed, found a high or critical security issue, or needs a
+reboot.
+
+## Security Findings
+
+Run only the security scan, without upgrades or cleanup:
+
+```bash
+~/.local/libexec/linux-cleanup-service/python3 ~/.local/libexec/linux-cleanup-service/security.py
+```
+
+The command prints a summary and writes `security.json`. Use
+`status.py --security-json` to read the full report. On Linux, install
+`openscap-scanner` first; without it, the OS source reports `unavailable` and
+project checks still run. On macOS, `brew vulns` requires Homebrew 7.0 or later.
+
+The report groups findings by source and includes CVE or advisory IDs, severity,
+CVSS scores when available, affected packages and versions, fixed versions when
+available, and the last check time. `SECURITY_MIN_SEVERITY` controls which
+findings are kept.
+
+A required reboot appears in `security.json` under `reboot`. The pass does not
+reboot the machine. After you install a kernel update, reboot when convenient.
+The next scan reports the same requirement until the running kernel matches the
+newest installed kernel and the reboot marker is gone.
 
 Linux service logs:
 
@@ -159,6 +185,9 @@ Inspect its generated rules:
 
 The rules permit APT metadata refresh, upgrades and cache cleanup, Snap refresh,
 and journal rotation and vacuuming. The daily pass runs them without a prompt.
+The installer checks `sudo -n -l` and prints a warning if the scoped rule is not
+accepted. Fix the rule or set `SUDO_TASKS_ENABLED=false` before relying on system
+updates.
 
 To install for an account without sudo, run `SKIP_SUDOERS=1 ./scripts/install`
 as that account and set `SUDO_TASKS_ENABLED=false`. Root-owned tasks are then
@@ -173,8 +202,10 @@ automatic retention policy.
 Linux stores settings and records under `~/.config/linux-cleanup-service/`,
 or `XDG_CONFIG_HOME/linux-cleanup-service` when set.
 macOS uses `~/Library/Application Support/macos-cleanup-service/`.
-Both locations contain `environment`, `status.json`, `review-status.json`,
-`pending-review.json`, `decisions.json`, and the maintenance lock. Homebrew upgrade timestamps use `brew_upgrade.json`.
+Both locations contain `environment`, `status.json`, `security.json`,
+`review-status.json`, `pending-review.json`, `decisions.json`, and the
+maintenance lock. Security caches use `osv-cache.json` and the `oval/`
+directory. Homebrew upgrade timestamps use `brew_upgrade.json`.
 Do not add these files to Git.
 
 ## Optional SSH Agent

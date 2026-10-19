@@ -121,13 +121,48 @@ def platform_skipped(status: dict[str, Any]) -> list[str]:
     return relevant
 
 
+def security_line(status: dict[str, Any]) -> str | None:
+    """Render the actionable part of the last security scan."""
+    security = status.get("security")
+    if not isinstance(security, dict):
+        return None
+    state = str(security.get("status", "unknown"))
+    if state in {"disabled", "dry-run", "unsupported", "unavailable"}:
+        return None
+    critical = int(security.get("critical") or 0)
+    high = int(security.get("high") or 0)
+    reboot = bool(security.get("reboot_required"))
+    if state == "failed":
+        reason = str(security.get("reason") or "security check failed")
+        return f"security check failed: {reason[:120]}"
+    if not critical and not high and not reboot:
+        return None
+    parts: list[str] = []
+    if critical:
+        parts.append(f"{critical} critical")
+    if high:
+        parts.append(f"{high} high")
+    text = "security: " + ", ".join(parts) if parts else "security: reboot required"
+    first = security.get("first")
+    if isinstance(first, dict) and first.get("id"):
+        text += f" ({first['id']}"
+        if first.get("package"):
+            text += f" {first['package']}"
+        text += ")"
+    if reboot and parts:
+        text += "; reboot required"
+    if state == "partial":
+        text += " (partial)"
+    return text
+
+
 def render_shell(config: Config) -> str | None:
     """Render one concise shell status line, or None when quiet.
 
     The shell init script runs on every new shell, so it stays silent
-    unless the last pass failed. Success, warning, and in-progress passes
-    carry no action for the user; their details remain available via
-    ``status.py --json``.
+    unless the last pass failed or the security scan has something
+    actionable. Success, warning, and in-progress cleanup details remain
+    available via ``status.py --json``.
     """
     status = read_status(config)
     if status is None:
@@ -144,8 +179,9 @@ def render_shell(config: Config) -> str | None:
         status.setdefault("errors", []).append(
             "cleanup stopped before it wrote a final result"
         )
+    security = security_line(status)
     if state != "failed":
-        return None
+        return f"{SHELL_PREFIX} {security}" if security else None
     if sys.platform == "darwin":
         hidden_keys = _LINUX_ONLY_STATUS_KEYS
         updater_fields = _MACOS_UPDATERS
@@ -203,6 +239,8 @@ def render_shell(config: Config) -> str | None:
         parts.append("warning: " + "; ".join(str(item) for item in warnings[:2]))
     if errors:
         parts.append("error: " + "; ".join(str(item) for item in errors[:2]))
+    if security:
+        parts.append(security)
     return " | ".join(parts)
 
 
@@ -219,6 +257,17 @@ def main() -> int:
     elif len(sys.argv) > 1 and sys.argv[1] == "--json":
         status = read_status(config)
         print(json.dumps(status or {}, indent=2, sort_keys=True))
+    elif len(sys.argv) > 1 and sys.argv[1] == "--security-json":
+        path = config.state_dir / "security.json"
+        try:
+            record = json.loads(path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            record = {}
+        except OSError as error:
+            record = {"status": "failed", "reason": f"security.json is unreadable: {error}"}
+        except json.JSONDecodeError:
+            record = {"status": "failed", "reason": "security.json is invalid"}
+        print(json.dumps(record, indent=2, sort_keys=True))
     else:
         line = render_shell(config)
         if line:
