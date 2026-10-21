@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Start the native agent only after the desktop keyring is unlocked."""
+"""Start the native agent only after the network and desktop keyring are ready."""
 
 import os
 from pathlib import Path
 import shutil
+import socket
 import subprocess
 import sys
 import time
@@ -48,8 +49,26 @@ def main() -> int:
         print(f"Waiting for desktop keyring: {detail}", file=sys.stderr)
         time.sleep(2)
 
-    socket = str(Path(runtime) / "proton-pass-ssh-agent" / "agent.sock")
-    os.execv(str(executable), [str(executable), "ssh-agent", "start", "--socket-path", socket])
+    # The CLI contacts this Proton Pass endpoint when it lists vault keys.
+    deadline = time.monotonic() + 120
+    while True:
+        try:
+            with socket.create_connection(("pass-api.proton.me", 443), timeout=5):
+                break
+        except OSError as error:
+            detail = f"Proton API is unreachable: {error}"
+            if time.monotonic() >= deadline:
+                print(
+                    f"{detail}. Connect to the network, then run "
+                    "systemctl --user restart proton-pass-ssh-agent.service. "
+                    "Proton Pass was not started.", file=sys.stderr,
+                )
+                return 78
+            print(f"Waiting for network: {detail}", file=sys.stderr)
+            time.sleep(2)
+
+    agent_socket = str(Path(runtime) / "proton-pass-ssh-agent" / "agent.sock")
+    os.execv(str(executable), [str(executable), "ssh-agent", "start", "--socket-path", agent_socket])
 
 
 if __name__ == "__main__":

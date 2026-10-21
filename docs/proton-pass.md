@@ -106,10 +106,12 @@ Before removing the integration, update Git's signing program and key settings.
 ## Startup and recovery
 
 The service starts with the graphical session, not the lingering user manager
-at boot. It waits up to two minutes for the default desktop keyring to unlock.
-If the keyring remains unavailable, it fails without invoking Proton Pass.
-Unlock the keyring, then restart the service. Other agent failures have bounded
-systemd retries. Authentication errors remain visible in the journal.
+at boot. It waits up to two minutes for the default desktop keyring to unlock
+and up to two more for the Proton API to answer, so a network that is still
+connecting at login does not leave the agent stopped. If either wait expires,
+it fails without invoking Proton Pass. Unlock the keyring or reconnect the
+network, then restart the service. Other agent failures have bounded systemd
+retries. Authentication errors remain visible in the journal.
 
 ```bash
 systemctl --user status proton-pass-ssh-agent.service

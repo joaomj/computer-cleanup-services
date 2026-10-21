@@ -100,7 +100,8 @@ is granted. Installation does not change journal retention or delete journals.
 
 `scripts/install-proton-pass` installs a separate Linux user service and Bash
 hooks. `proton_pass_agent.py` waits for the default Secret Service collection to
-unlock, then replaces its process with the native Proton Pass SSH agent.
+unlock and for the Proton API to answer, then replaces its process with the
+native Proton Pass SSH agent.
 The service starts with the graphical session and uses persistent D-Bus keyring
 storage. Its lifecycle is independent of maintenance.
 
