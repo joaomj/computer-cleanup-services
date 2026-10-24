@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 import shutil
 import subprocess
@@ -22,6 +21,8 @@ from cache_cleanup import (
     prune_uv_cache,
 )
 from common import (
+    adopt_login_path,
+    find_brew,
     ProcessPaths,
     inspect_tree,
     mark_skipped,
@@ -174,28 +175,6 @@ def update_snap(
         warnings.append(f"Snap refresh failed: {stderr or stdout or 'unknown error'}")
         return "failed"
     return "updated"
-
-
-def find_brew() -> str | None:
-    """Locate the Homebrew binary without trusting the launchd PATH.
-
-    The launchd job runs with a minimal PATH that may not contain a
-    user-local Homebrew installation (for example ``~/homebrew/bin``),
-    so check the well-known prefixes as a fallback."""
-    resolved = shutil.which("brew")
-    if resolved:
-        return resolved
-    for candidate in (
-        Path.home() / "homebrew" / "bin" / "brew",
-        Path("/opt/homebrew/bin/brew"),
-        Path("/usr/local/bin/brew"),
-    ):
-        try:
-            if candidate.is_file() and os.access(candidate, os.X_OK):
-                return str(candidate)
-        except OSError:
-            continue
-    return None
 
 
 def read_brew_upgrade_state(config: Config) -> datetime | None:
@@ -554,6 +533,9 @@ def execute(config: Config, dry_run: bool) -> dict[str, Any]:
         "skipped": skipped,
         "dry_run": dry_run,
     }
+    path_warning = adopt_login_path()
+    if path_warning:
+        warnings.append(path_warning)
     runtime_result = update_runtimes(config, now, dry_run)
     result["runtime_updates"] = runtime_result
     warnings.extend(runtime_result["warnings"])

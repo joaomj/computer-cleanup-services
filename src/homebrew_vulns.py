@@ -3,32 +3,11 @@
 from __future__ import annotations
 
 import json
-import os
-import shutil
 import sys
-from pathlib import Path
 from typing import Any
 
-from common import run_command
+from common import find_brew, run_command
 from config import Config
-
-
-def find_brew() -> str | None:
-    """Locate Homebrew even when the service PATH is minimal."""
-    resolved = shutil.which("brew")
-    if resolved:
-        return resolved
-    for candidate in (
-        Path.home() / "homebrew" / "bin" / "brew",
-        Path("/opt/homebrew/bin/brew"),
-        Path("/usr/local/bin/brew"),
-    ):
-        try:
-            if candidate.is_file() and os.access(candidate, os.X_OK):
-                return str(candidate)
-        except OSError:
-            continue
-    return None
 
 
 def _severity(value: Any) -> str:

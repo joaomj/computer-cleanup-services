@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import pwd
 import shutil
 import selectors
 import signal
@@ -232,6 +233,109 @@ def tool_path(name: str, *fallbacks: str) -> str | None:
         path = Path(candidate)
         if path.is_file() and os.access(path, os.X_OK):
             return str(path)
+    return None
+
+
+def login_shell_path(timeout_seconds: int = 10) -> list[str]:
+    """Return the PATH entries that the account's login shell sets up.
+
+    Service managers start jobs with a minimal PATH, so tools that the user
+    installs under their own prefixes (for example ``~/.local/bin``) are
+    invisible to the service. Asking the login shell keeps the service in
+    step with the user's own setup instead of a fixed directory list.
+    """
+    try:
+        shell = pwd.getpwuid(os.getuid()).pw_shell
+    except KeyError:
+        shell = ""
+    shell = shell or os.environ.get("SHELL", "")
+    if not shell or not os.access(shell, os.X_OK):
+        raise RuntimeError(f"login shell is unavailable: {shell or 'not set'}")
+    environment = {
+        key: os.environ[key]
+        for key in ("HOME", "USER", "LOGNAME", "PATH", "LANG", "TMPDIR")
+        if key in os.environ
+    }
+    environment["SHELL"] = shell
+    environment["TERM"] = "dumb"
+    # `env` prints PATH in the same form for POSIX shells and fish alike.
+    try:
+        result = subprocess.run(
+            [shell, "-lc", "env"],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            env=environment,
+            timeout=timeout_seconds,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise RuntimeError(f"login shell {shell} did not report PATH: {error}") from error
+    lines = [line for line in result.stdout.splitlines() if line.startswith("PATH=")]
+    if result.returncode != 0 or not lines:
+        reason = (result.stderr or "no PATH in output").strip()[-200:]
+        raise RuntimeError(
+            f"login shell {shell} did not report PATH (exit {result.returncode}): {reason}"
+        )
+    return [entry for entry in lines[-1][len("PATH="):].split(os.pathsep) if entry]
+
+
+def adopt_login_path() -> str | None:
+    """Put the login shell's PATH ahead of the service PATH.
+
+    Returns a warning when the login shell cannot be read; the service then
+    keeps its own PATH, so the pass still runs with reduced tool discovery.
+    """
+    try:
+        login_entries = login_shell_path()
+    except RuntimeError as error:
+        return f"using the service PATH only: {error}"
+    merged: list[str] = []
+    for entry in login_entries + os.environ.get("PATH", "").split(os.pathsep):
+        if entry and entry not in merged:
+            merged.append(entry)
+    os.environ["PATH"] = os.pathsep.join(merged)
+    return None
+
+
+def find_brew() -> str | None:
+    """Return a Homebrew this account can maintain, or None.
+
+    A machine can hold several Homebrew installations, each owned by a
+    different account. Running another account's Homebrew fails with
+    permission errors, so only an installation whose prefix this account
+    can write to is returned. Candidates come from every PATH entry first,
+    then from Homebrew's documented default prefixes.
+    """
+    candidates: list[Path] = [
+        Path(entry) / "brew"
+        for entry in os.environ.get("PATH", "").split(os.pathsep)
+        if entry
+    ]
+    if os.environ.get("HOMEBREW_PREFIX"):
+        candidates.append(Path(os.environ["HOMEBREW_PREFIX"]) / "bin" / "brew")
+    candidates.extend(
+        (
+            Path.home() / "homebrew" / "bin" / "brew",
+            Path("/opt/homebrew/bin/brew"),
+            Path("/usr/local/bin/brew"),
+            Path("/home/linuxbrew/.linuxbrew/bin/brew"),
+        )
+    )
+    seen: set[Path] = set()
+    for candidate in candidates:
+        try:
+            if not (candidate.is_file() and os.access(candidate, os.X_OK)):
+                continue
+            # The repository holding brew.sh is what `brew` needs to read and update.
+            repository = candidate.resolve().parent.parent
+        except OSError:
+            continue
+        if repository in seen:
+            continue
+        seen.add(repository)
+        if os.access(repository, os.W_OK):
+            return str(candidate)
     return None
 
 

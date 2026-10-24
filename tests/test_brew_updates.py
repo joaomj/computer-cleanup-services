@@ -282,8 +282,14 @@ if [ \"$1\" = \"upgrade\" ] && [ \"${FAIL_BREW_UPGRADE:-0}\" = \"1\" ]; then exi
             brew.parent.mkdir(parents=True)
             brew.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
             brew.chmod(0o755)
+            environment = {
+                key: value
+                for key, value in os.environ.items()
+                if key != "HOMEBREW_PREFIX"
+            }
+            environment["PATH"] = "/usr/bin:/bin"
             with (
-                patch("cleanup.shutil.which", return_value=None),
+                patch.dict(os.environ, environment, clear=True),
                 patch.object(Path, "home", return_value=home),
             ):
                 self.assertEqual(find_brew(), str(brew))
