@@ -7,8 +7,34 @@ if [[ "$(id -u)" == "0" ]]; then
     printf 'Run this installer as your regular user, not root.\n' >&2
     exit 1
 fi
-PYTHON_BIN="$(command -v python3)"
-"$PYTHON_BIN" -c 'import sys; sys.exit("Python 3.10 or later is required; install a supported Python and put it on PATH") if sys.version_info < (3, 10) else None'
+python_supported() {
+    "$1" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)' >/dev/null 2>&1
+}
+
+find_python() {
+    local candidate
+    for candidate in \
+        "$(command -v python3 2>/dev/null || true)" \
+        "$HOME"/homebrew/opt/python@*/bin/python3 \
+        /opt/homebrew/opt/python@*/bin/python3 \
+        /usr/local/opt/python@*/bin/python3 \
+        /opt/homebrew/bin/python3 \
+        "$HOME"/homebrew/bin/python3 \
+        /usr/local/bin/python3 \
+        /usr/bin/python3 \
+        python3; do
+        if [ -x "$candidate" ] && python_supported "$candidate"; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+    done
+    return 1
+}
+
+if ! PYTHON_BIN="$(find_python)"; then
+    printf 'Python 3.10 or later is required; install a supported Python and rerun.\n' >&2
+    exit 1
+fi
 
 is_macos() { [[ "$(uname -s)" == "Darwin" ]]; }
 is_linux() { [[ "$(uname -s)" == "Linux" ]]; }
@@ -35,7 +61,12 @@ LIBEXEC_DIR="$HOME/.local/libexec/$SERVICE_NAME"
 CONFIG_DIR="$CONFIG_ROOT/$SERVICE_NAME"
 
 install -d -m 700 "$LIBEXEC_DIR" "$CONFIG_DIR" "$STATE_DIR" "$SERVICE_DIR"
-ln -sfn "$PYTHON_BIN" "$LIBEXEC_DIR/python3"
+# A launcher, not a symlink: Homebrew deletes the recorded interpreter path
+# when it upgrades the formula.
+rm -f "$LIBEXEC_DIR/python3"
+install -m 755 "$ROOT_DIR/shell/python3-launcher.sh" "$LIBEXEC_DIR/python3"
+printf '%s\n' "$PYTHON_BIN" > "$LIBEXEC_DIR/python3-interpreter"
+chmod 600 "$LIBEXEC_DIR/python3-interpreter"
 install -m 755 "$ROOT_DIR/src/config.py" "$LIBEXEC_DIR/config.py"
 install -m 755 "$ROOT_DIR/src/common.py" "$LIBEXEC_DIR/common.py"
 install -m 755 "$ROOT_DIR/src/cache_cleanup.py" "$LIBEXEC_DIR/cache_cleanup.py"

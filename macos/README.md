@@ -25,7 +25,7 @@ cleanup are automatic. High-risk items wait for a recorded decision.
 | Item | Path |
 | --- | --- |
 | Configuration and state | `~/Library/Application Support/macos-cleanup-service/` |
-| Runtime code and Python link | `~/.local/libexec/macos-cleanup-service/` |
+| Runtime code and Python launcher | `~/.local/libexec/macos-cleanup-service/` |
 | LaunchAgent | `~/Library/LaunchAgents/com.user.macos-cleanup-service.plist` |
 | Public defaults | `config/macos.conf` in the checkout |
 

@@ -16,7 +16,7 @@ Check installer syntax:
 
 ```bash
 for file in scripts/install scripts/uninstall scripts/install-proton-pass \
-    shell/proton-pass-init.sh shell/proton-pass-sign.sh; do
+    shell/python3-launcher.sh shell/proton-pass-init.sh shell/proton-pass-sign.sh; do
     bash -n "$file" || exit
 done
 ```

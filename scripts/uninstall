@@ -39,12 +39,17 @@ esac
 
 LIBEXEC_DIR="$HOME/.local/libexec/$SERVICE_NAME"
 PYTHON_BIN="$LIBEXEC_DIR/python3"
+# Prefer the installed launcher; a missing interpreter must not stop removal
+# half way.
+[ -x "$PYTHON_BIN" ] || PYTHON_BIN="$(command -v python3 || true)"
 SHELL_RC=""
 case "$(basename "${SHELL:-/bin/sh}")" in
     zsh) SHELL_RC="$HOME/.zshrc" ;;
     bash) SHELL_RC="$HOME/.bashrc" ;;
 esac
-if [ -n "$SHELL_RC" ] && [ -f "$SHELL_RC" ]; then
+if [ -z "$PYTHON_BIN" ]; then
+    printf 'No Python found; remove the cleanup lines from %s by hand.\n' "${SHELL_RC:-your shell startup file}" >&2
+elif [ -n "$SHELL_RC" ] && [ -f "$SHELL_RC" ]; then
     "$PYTHON_BIN" - "$SHELL_RC" "$SERVICE_NAME" "$INIT_FILENAME" <<'PYHOOK'
 import sys
 from pathlib import Path

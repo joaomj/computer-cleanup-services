@@ -89,8 +89,10 @@ details and the OVAL feed are cached in the state directory.
 ## Installation Boundary
 
 The installer copies runtime files outside the checkout and records the selected
-Python interpreter through an installed symlink. The shell hooks and service
-use that interpreter. Removing the checkout does not affect the installed copy.
+Python interpreter in `python3-interpreter`. The installed `python3` launcher
+runs that interpreter and falls back to a Homebrew Python when an upgrade
+deletes the recorded path. The shell hooks and service both use the launcher.
+Removing the checkout does not affect the installed copy.
 
 Services run as the user. Linux updates and root-owned cache and journal
 operations use exact commands in a scoped sudoers rule. No general root shell

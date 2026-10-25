@@ -17,7 +17,12 @@ LIBEXEC="$HOME/.local/libexec/proton-pass-ssh-agent"
 UNITS="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 install -d -m 700 "$LIBEXEC" "$UNITS" "$HOME/.ssh"
 ln -sfn "$(command -v pass-cli)" "$LIBEXEC/pass-cli"
-ln -sfn "$(python3 -c 'import os,sys; print(os.path.realpath(sys.executable))')" "$LIBEXEC/python3"
+# A launcher, not a symlink: a Python upgrade deletes the interpreter path
+# recorded here, which would leave the unit unable to start.
+rm -f "$LIBEXEC/python3"
+install -m 755 "$ROOT_DIR/shell/python3-launcher.sh" "$LIBEXEC/python3"
+python3 -c 'import os, sys; print(os.path.abspath(sys.executable))' > "$LIBEXEC/python3-interpreter"
+chmod 600 "$LIBEXEC/python3-interpreter"
 install -m 755 "$ROOT_DIR/src/proton_pass_agent.py" "$LIBEXEC/proton_pass_agent.py"
 install -m 644 "$ROOT_DIR/shell/proton-pass-init.sh" "$LIBEXEC/proton-pass-init.sh"
 install -m 755 "$ROOT_DIR/shell/proton-pass-sign.sh" "$LIBEXEC/proton-pass-sign.sh"

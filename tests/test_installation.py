@@ -144,6 +144,22 @@ class InstallationTest(unittest.TestCase):
                     timeout=10,
                 )
                 self.assertEqual(help_result.returncode, 0, help_result.stderr)
+                self.assertFalse((installed / "python3").is_symlink())
+                # A Python upgrade deletes the interpreter recorded at install
+                # time; the launcher must still run the service.
+                (installed / "python3-interpreter").write_text("/nonexistent/bin/python3\n")
+                recovered = subprocess.run(
+                    [
+                        str(installed / "python3"),
+                        str(installed / "maintenance.py"),
+                        "--help",
+                    ],
+                    capture_output=True,
+                    text=True,
+                    env=environment,
+                    timeout=10,
+                )
+                self.assertEqual(recovered.returncode, 0, recovered.stderr)
                 refused = subprocess.run(
                     ["bash", str(ROOT / "scripts/uninstall")],
                     input="Y\n",
