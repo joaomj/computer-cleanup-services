@@ -42,10 +42,10 @@ Ubuntu OVAL scan. Findings at or above `SECURITY_MIN_SEVERITY` are written to
 ## Status and Cleanup
 
 ```bash
-~/.local/libexec/macos-cleanup-service/python3 ~/.local/libexec/macos-cleanup-service/status.py --json
-~/.local/libexec/macos-cleanup-service/python3 ~/.local/libexec/macos-cleanup-service/status.py --security-json
-~/.local/libexec/macos-cleanup-service/python3 ~/.local/libexec/macos-cleanup-service/status.py --review-json
-~/.local/libexec/macos-cleanup-service/python3 ~/.local/libexec/macos-cleanup-service/maintenance.py --review --force --ignore-pressure
+~/.local/libexec/macos-cleanup-service/macos-cleanup-service ~/.local/libexec/macos-cleanup-service/status.py --json
+~/.local/libexec/macos-cleanup-service/macos-cleanup-service ~/.local/libexec/macos-cleanup-service/status.py --security-json
+~/.local/libexec/macos-cleanup-service/macos-cleanup-service ~/.local/libexec/macos-cleanup-service/status.py --review-json
+~/.local/libexec/macos-cleanup-service/macos-cleanup-service ~/.local/libexec/macos-cleanup-service/maintenance.py --review --force --ignore-pressure
 ```
 
 To request the daily pass through launchd:

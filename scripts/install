@@ -62,9 +62,10 @@ CONFIG_DIR="$CONFIG_ROOT/$SERVICE_NAME"
 
 install -d -m 700 "$LIBEXEC_DIR" "$CONFIG_DIR" "$STATE_DIR" "$SERVICE_DIR"
 # A launcher, not a symlink: Homebrew deletes the recorded interpreter path
-# when it upgrades the formula.
+# when it upgrades the formula. It carries the service name so macOS names the
+# background item after the service instead of "python3".
 rm -f "$LIBEXEC_DIR/python3"
-install -m 755 "$ROOT_DIR/shell/python3-launcher.sh" "$LIBEXEC_DIR/python3"
+install -m 755 "$ROOT_DIR/shell/python3-launcher.sh" "$LIBEXEC_DIR/$SERVICE_NAME"
 printf '%s\n' "$PYTHON_BIN" > "$LIBEXEC_DIR/python3-interpreter"
 chmod 600 "$LIBEXEC_DIR/python3-interpreter"
 install -m 755 "$ROOT_DIR/src/config.py" "$LIBEXEC_DIR/config.py"
@@ -139,14 +140,14 @@ if is_macos; then
             *) LAUNCHD_PATH_EXTRA="$LAUNCHD_PATH_EXTRA:$BREW_DIR" ;;
         esac
     fi
-    "$PYTHON_BIN" - "$ROOT_DIR/macos/launchd/user/com.user.macos-cleanup-service.plist" "$PLIST" "$LIBEXEC_DIR" "$STATE_DIR" "$LAUNCHD_PATH_EXTRA" <<'PYPLIST'
+    "$PYTHON_BIN" - "$ROOT_DIR/macos/launchd/user/com.user.macos-cleanup-service.plist" "$PLIST" "$LIBEXEC_DIR" "$STATE_DIR" "$LAUNCHD_PATH_EXTRA" "$SERVICE_NAME" <<'PYPLIST'
 import plistlib
 import sys
 from pathlib import Path
-source, target, libexec, state, extra_path = sys.argv[1:]
+source, target, libexec, state, extra_path, service = sys.argv[1:]
 with Path(source).open("rb") as file:
     job = plistlib.load(file)
-job["ProgramArguments"] = [f"{libexec}/python3", f"{libexec}/maintenance.py"]
+job["ProgramArguments"] = [f"{libexec}/{service}", f"{libexec}/maintenance.py"]
 job["EnvironmentVariables"]["PATH"] = f"/usr/bin:/bin:/usr/sbin:/sbin:{extra_path}"
 job["StandardOutPath"] = f"{state}/launchd-stdout.log"
 job["StandardErrorPath"] = f"{state}/launchd-stderr.log"

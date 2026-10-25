@@ -6,7 +6,7 @@
     <string>com.user.macos-cleanup-service</string>
     <key>ProgramArguments</key>
     <array>
-        <string>LIBEXEC_DIR_PLACEHOLDER/python3</string>
+        <string>LIBEXEC_DIR_PLACEHOLDER/macos-cleanup-service</string>
         <string>LIBEXEC_DIR_PLACEHOLDER/maintenance.py</string>
     </array>
     <key>EnvironmentVariables</key>

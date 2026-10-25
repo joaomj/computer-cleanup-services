@@ -35,7 +35,7 @@ grows by more than 25%. A deleted item that appears again is offered again.
 To review now, even when the system has free space:
 
 ```bash
-~/.local/libexec/linux-cleanup-service/python3 ~/.local/libexec/linux-cleanup-service/maintenance.py --review --force --ignore-pressure
+~/.local/libexec/linux-cleanup-service/linux-cleanup-service ~/.local/libexec/linux-cleanup-service/maintenance.py --review --force --ignore-pressure
 ```
 
 To forget all recorded decisions, delete `decisions.json` in the state
@@ -72,7 +72,7 @@ From a checkout:
 Or from an installed copy:
 
 ```bash
-~/.local/libexec/linux-cleanup-service/python3 ~/.local/libexec/linux-cleanup-service/configure.py
+~/.local/libexec/linux-cleanup-service/linux-cleanup-service ~/.local/libexec/linux-cleanup-service/configure.py
 ```
 
 Review paths and thresholds before enabling application cleanup.
@@ -80,9 +80,9 @@ Review paths and thresholds before enabling application cleanup.
 ## View Results
 
 ```bash
-~/.local/libexec/linux-cleanup-service/python3 ~/.local/libexec/linux-cleanup-service/status.py --json
-~/.local/libexec/linux-cleanup-service/python3 ~/.local/libexec/linux-cleanup-service/status.py --security-json
-~/.local/libexec/linux-cleanup-service/python3 ~/.local/libexec/linux-cleanup-service/status.py --review-json
+~/.local/libexec/linux-cleanup-service/linux-cleanup-service ~/.local/libexec/linux-cleanup-service/status.py --json
+~/.local/libexec/linux-cleanup-service/linux-cleanup-service ~/.local/libexec/linux-cleanup-service/status.py --security-json
+~/.local/libexec/linux-cleanup-service/linux-cleanup-service ~/.local/libexec/linux-cleanup-service/status.py --review-json
 ```
 
 The first command shows the daily pass. The second shows the last security
@@ -95,7 +95,7 @@ reboot.
 Run only the security scan, without upgrades or cleanup:
 
 ```bash
-~/.local/libexec/linux-cleanup-service/python3 ~/.local/libexec/linux-cleanup-service/security.py
+~/.local/libexec/linux-cleanup-service/linux-cleanup-service ~/.local/libexec/linux-cleanup-service/security.py
 ```
 
 The command prints a summary and writes `security.json`. Use
@@ -128,7 +128,7 @@ tail -n 50 "$HOME/Library/Application Support/macos-cleanup-service/launchd-stde
 ## Preview the Daily Pass
 
 ```bash
-~/.local/libexec/linux-cleanup-service/python3 ~/.local/libexec/linux-cleanup-service/maintenance.py --dry-run
+~/.local/libexec/linux-cleanup-service/linux-cleanup-service ~/.local/libexec/linux-cleanup-service/maintenance.py --dry-run
 ```
 
 The preview skips upgrades and deletions, including journal vacuuming.
@@ -171,7 +171,7 @@ launchctl start com.user.macos-cleanup-service
 These commands respect the daily gate. For an explicit same-day retry:
 
 ```bash
-~/.local/libexec/linux-cleanup-service/python3 ~/.local/libexec/linux-cleanup-service/maintenance.py --force
+~/.local/libexec/linux-cleanup-service/linux-cleanup-service ~/.local/libexec/linux-cleanup-service/maintenance.py --force
 ```
 
 ## Linux Privileged Commands
@@ -180,7 +180,7 @@ The installer creates `/etc/sudoers.d/90-linux-cleanup-service`.
 Inspect its generated rules:
 
 ```bash
-~/.local/libexec/linux-cleanup-service/python3 ~/.local/libexec/linux-cleanup-service/config.py sudoers-config
+~/.local/libexec/linux-cleanup-service/linux-cleanup-service ~/.local/libexec/linux-cleanup-service/config.py sudoers-config
 ```
 
 The rules permit APT metadata refresh, upgrades and cache cleanup, Snap refresh,

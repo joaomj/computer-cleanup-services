@@ -3,7 +3,7 @@ Description=Daily upgrades and automatic low-risk cleanup
 
 [Service]
 Type=oneshot
-ExecStart=%h/.local/libexec/linux-cleanup-service/python3 %h/.local/libexec/linux-cleanup-service/maintenance.py
+ExecStart=%h/.local/libexec/linux-cleanup-service/linux-cleanup-service %h/.local/libexec/linux-cleanup-service/maintenance.py
 Environment="XDG_CONFIG_HOME=CONFIG_ROOT_PLACEHOLDER"
 TimeoutStartSec=30min
 PrivateTmp=false

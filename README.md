@@ -113,9 +113,9 @@ A review without pressure does not prompt. It records `deferred` in
 On Linux, inspect the daily pass, the security report, and the last review:
 
 ```bash
-~/.local/libexec/linux-cleanup-service/python3 ~/.local/libexec/linux-cleanup-service/status.py --json
-~/.local/libexec/linux-cleanup-service/python3 ~/.local/libexec/linux-cleanup-service/status.py --security-json
-~/.local/libexec/linux-cleanup-service/python3 ~/.local/libexec/linux-cleanup-service/status.py --review-json
+~/.local/libexec/linux-cleanup-service/linux-cleanup-service ~/.local/libexec/linux-cleanup-service/status.py --json
+~/.local/libexec/linux-cleanup-service/linux-cleanup-service ~/.local/libexec/linux-cleanup-service/status.py --security-json
+~/.local/libexec/linux-cleanup-service/linux-cleanup-service ~/.local/libexec/linux-cleanup-service/status.py --review-json
 ```
 
 On macOS, replace `linux-cleanup-service` with `macos-cleanup-service`.
@@ -158,7 +158,7 @@ Limits:
 Run only the security scan from the installed copy:
 
 ```bash
-~/.local/libexec/linux-cleanup-service/python3 ~/.local/libexec/linux-cleanup-service/security.py
+~/.local/libexec/linux-cleanup-service/linux-cleanup-service ~/.local/libexec/linux-cleanup-service/security.py
 ```
 
 From a checkout, run `python3 src/security.py`. The command prints the summary

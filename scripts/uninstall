@@ -38,7 +38,7 @@ case "$(uname -s)" in
 esac
 
 LIBEXEC_DIR="$HOME/.local/libexec/$SERVICE_NAME"
-PYTHON_BIN="$LIBEXEC_DIR/python3"
+PYTHON_BIN="$LIBEXEC_DIR/$SERVICE_NAME"
 # Prefer the installed launcher; a missing interpreter must not stop removal
 # half way.
 [ -x "$PYTHON_BIN" ] || PYTHON_BIN="$(command -v python3 || true)"
