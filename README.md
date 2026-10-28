@@ -252,3 +252,5 @@ keys. See [Proton Pass setup](docs/proton-pass.md).
 ## License
 
 [MIT](LICENSE).
+
+<!-- gate probe -->
