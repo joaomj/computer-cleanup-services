@@ -85,6 +85,7 @@ install -m 755 "$ROOT_DIR/src/high_risk.py" "$LIBEXEC_DIR/high_risk.py"
 install -m 755 "$ROOT_DIR/src/artifacts.py" "$LIBEXEC_DIR/artifacts.py"
 install -m 755 "$ROOT_DIR/src/pressure.py" "$LIBEXEC_DIR/pressure.py"
 install -m 755 "$ROOT_DIR/src/decisions.py" "$LIBEXEC_DIR/decisions.py"
+install -m 755 "$ROOT_DIR/src/kernel_update.py" "$LIBEXEC_DIR/kernel_update.py"
 
 if [ ! -e "$CONFIG_DIR/environment" ]; then
     ENV_TEMPLATE="$ROOT_DIR/config/default.conf"

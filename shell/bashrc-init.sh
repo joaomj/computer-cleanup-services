@@ -8,8 +8,9 @@ if command -v systemctl >/dev/null 2>&1 && systemctl --user is-system-running >/
     systemctl --user start --no-block linux-cleanup.service >/dev/null 2>&1 || true
 fi
 
-# Ask about high-risk items only when some are waiting for a decision.
-if [ -x "$LAUNCHER" ] && [ -t 0 ] && [ -t 1 ] && [ -f "${XDG_CONFIG_HOME:-$HOME/.config}/linux-cleanup-service/pending-review.json" ]; then
+# Ask only when high-risk items or a kernel update wait for a decision.
+STATE_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/linux-cleanup-service"
+if [ -x "$LAUNCHER" ] && [ -t 0 ] && [ -t 1 ] && { [ -f "$STATE_DIR/pending-review.json" ] || [ -f "$STATE_DIR/pending-kernel.json" ]; }; then
     "$LAUNCHER" "$SERVICE_DIR/maintenance.py" --review --quiet
 fi
 

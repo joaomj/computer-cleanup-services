@@ -41,6 +41,15 @@ To review now, even when the system has free space:
 To forget all recorded decisions, delete `decisions.json` in the state
 directory. The next daily pass offers every current item again.
 
+## Kernel Updates
+
+The daily pass never installs a kernel. It records a waiting kernel update in
+`pending-kernel.json`. The next interactive shell shows the kernel version,
+download size, and free space in `/boot`, then asks `[y/N/q]`. Enter `y` to run
+`sudo apt-get full-upgrade -y`, which asks for your sudo password. Enter `n` to
+skip until tomorrow, or `q` to stop. Disk and memory pressure do not affect
+this question. Reboot after the install.
+
 ## Multiple Accounts on One Host
 
 Install the service once per account, as that account. Each account keeps its

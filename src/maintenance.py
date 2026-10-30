@@ -21,6 +21,7 @@ from decisions import (
     write_pending,
 )
 from high_risk import Candidate, delete
+from kernel_update import offer_kernel_update
 from pressure import near_full
 from state import cleanup_lock, write_json
 
@@ -197,6 +198,10 @@ def main() -> int:
             print(json.dumps(result, indent=2, sort_keys=True))
             return 0 if result["status"] != "failed" else 1
         if args.review:
+            # The kernel question is never gated by disk or memory pressure.
+            if sys.stdin.isatty() and sys.stdout.isatty():
+                if offer_kernel_update(config, today, args.force) == "stopped":
+                    return 0
             return review(
                 config, today, args.force, args.quiet, args.ignore_pressure
             )
