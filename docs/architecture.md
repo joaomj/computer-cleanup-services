@@ -46,6 +46,8 @@ interactive shell, when pending-review.json exists
 - `common.py` owns commands, the process-reference check, and tree inspection.
 - `runtime_update.py` verifies and installs optional runtime upgrades.
 - `state.py` owns the process lock and atomic private state writes.
+- `kernel_update.py` finds a waiting kernel update and installs it only after
+  the user agrees in a terminal.
 - `pressure.py` decides whether the machine needs space before a review.
 - `status.py` reports the daily pass and review records.
 

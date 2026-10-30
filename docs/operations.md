@@ -41,6 +41,15 @@ To review now, even when the system has free space:
 To forget all recorded decisions, delete `decisions.json` in the state
 directory. The next daily pass offers every current item again.
 
+## Kernel Updates
+
+The daily pass never installs a kernel. It records a waiting kernel update in
+`pending-kernel.json`. The next interactive shell shows the kernel version,
+download size, and free space in `/boot`, then asks `[y/N/q]`. Enter `y` to run
+`sudo apt-get full-upgrade -y`, which asks for your sudo password. Enter `n` to
+skip until tomorrow, or `q` to stop. Disk and memory pressure do not affect
+this question. Reboot after the install.
+
 ## Multiple Accounts on One Host
 
 Install the service once per account, as that account. Each account keeps its
@@ -99,8 +108,8 @@ Run only the security scan, without upgrades or cleanup:
 ```
 
 The command prints a summary and writes `security.json`. Use
-`status.py --security-json` to read the full report. On Linux, install
-`openscap-scanner` first; without it, the OS source reports `unavailable` and
+`status.py --security-json` to read the full report. On Linux, the installer
+installs `openscap-scanner`; without it, the OS source reports `unavailable` and
 project checks still run. On macOS, `brew vulns` requires Homebrew 7.0 or later.
 
 The report groups findings by source and includes CVE or advisory IDs, severity,

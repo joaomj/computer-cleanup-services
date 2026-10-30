@@ -33,6 +33,7 @@ from common import (
 )
 from config import Config, format_bytes
 from high_risk import discover
+from kernel_update import check_kernel_update
 from runtime_update import update_runtimes
 from security import scan_security
 from state import write_json
@@ -549,6 +550,7 @@ def execute(config: Config, dry_run: bool) -> dict[str, Any]:
             )
     else:
         result["apt_updates"] = update_apt(config, warnings, skipped, dry_run)
+        result["kernel_update"] = check_kernel_update(config, warnings, skipped, dry_run)
         result["snap_updates"] = update_snap(config, warnings, skipped, dry_run)
         if config.apt_cache_cleanup_enabled:
             result["apt_cache"] = clean_apt_cache(config, dry_run, warnings, skipped)

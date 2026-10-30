@@ -85,6 +85,7 @@ install -m 755 "$ROOT_DIR/src/high_risk.py" "$LIBEXEC_DIR/high_risk.py"
 install -m 755 "$ROOT_DIR/src/artifacts.py" "$LIBEXEC_DIR/artifacts.py"
 install -m 755 "$ROOT_DIR/src/pressure.py" "$LIBEXEC_DIR/pressure.py"
 install -m 755 "$ROOT_DIR/src/decisions.py" "$LIBEXEC_DIR/decisions.py"
+install -m 755 "$ROOT_DIR/src/kernel_update.py" "$LIBEXEC_DIR/kernel_update.py"
 
 if [ ! -e "$CONFIG_DIR/environment" ]; then
     ENV_TEMPLATE="$ROOT_DIR/config/default.conf"
@@ -159,6 +160,10 @@ Path(target).chmod(0o644)
 PYPLIST
     launchctl unload "$PLIST" >/dev/null 2>&1 || true
     launchctl load "$PLIST"
+    # macOS CVE scanning is built into Homebrew 7.0 or later; nothing to install.
+    if command -v brew >/dev/null 2>&1 && ! brew vulns --help >/dev/null 2>&1; then
+        printf 'Homebrew CVE scanning needs Homebrew 7.0 or later: brew update\n'
+    fi
     printf 'Installed %s (macOS). The daily pass runs at 03:00 and on the first shell of the day.\n' "$SERVICE_NAME"
 elif is_linux; then
     install -m 755 "$ROOT_DIR/shell/$INIT_FILENAME" "$LIBEXEC_DIR/$INIT_FILENAME"
@@ -195,8 +200,21 @@ PYUNIT
     else
         printf 'User files installed. Automatic APT/Snap upgrades need scoped sudo access.\n'
     fi
-    if ! command -v oscap >/dev/null 2>&1; then
+    if command -v oscap >/dev/null 2>&1; then
+        :
+    elif [ "${SKIP_SUDOERS:-0}" = "1" ] || ! command -v sudo >/dev/null 2>&1 || ! command -v apt-get >/dev/null 2>&1; then
         printf 'OS CVE scanning needs openscap-scanner: sudo apt install openscap-scanner\n'
+    else
+        OSCAP_LOG="$(mktemp)"
+        printf 'Installing openscap-scanner for OS CVE scanning...\n'
+        if sudo apt-get install -y -qq openscap-scanner >"$OSCAP_LOG" 2>&1; then
+            rm -f "$OSCAP_LOG"
+        else
+            tail -n 5 "$OSCAP_LOG" >&2
+            printf 'Could not install openscap-scanner (full output: %s).\n' "$OSCAP_LOG" >&2
+            printf 'Install it with: sudo apt install openscap-scanner\n' >&2
+            exit 1
+        fi
     fi
     printf 'Installed %s (Linux). The daily pass runs at 03:00 and on the first shell of the day.\n' "$SERVICE_NAME"
 fi
