@@ -108,8 +108,8 @@ Run only the security scan, without upgrades or cleanup:
 ```
 
 The command prints a summary and writes `security.json`. Use
-`status.py --security-json` to read the full report. On Linux, install
-`openscap-scanner` first; without it, the OS source reports `unavailable` and
+`status.py --security-json` to read the full report. On Linux, the installer
+installs `openscap-scanner`; without it, the OS source reports `unavailable` and
 project checks still run. On macOS, `brew vulns` requires Homebrew 7.0 or later.
 
 The report groups findings by source and includes CVE or advisory IDs, severity,

@@ -43,9 +43,10 @@ that is now in use, recent, tracked by Git, or changed in another way is kept.
 - Linux with a systemd user manager, or macOS with launchd.
 - An interactive Bash or zsh shell for the startup hook and review prompt.
 - Tools for the actions you use. Actions for missing tools are skipped.
-- `openscap-scanner` on Linux for OS CVE checks. Project checks still run
-  without it.
-- Homebrew 7.0 or later on macOS for `brew vulns` checks.
+- `openscap-scanner` on Linux for OS CVE checks. The installer installs it with
+  `sudo apt-get install`. Project checks still run without it.
+- Homebrew 7.0 or later on macOS for `brew vulns` checks. The installer
+  reports an older Homebrew but does not upgrade it.
 - GnuPG tools and Apple Silicon if you enable verified macOS runtime upgrades.
 
 Linux package upgrades support APT and Snap, not every distribution's package

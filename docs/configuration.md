@@ -69,7 +69,10 @@ vulnerabilities after package upgrades. The checks do not use `sudo`.
 | `SECURITY_SCAN_TIMEOUT_SECONDS` | `900` | Timeout for the OpenSCAP evaluation and `brew vulns`. |
 | `SECURITY_OSV_CACHE_HOURS` | `24` | Reuse OSV vulnerability details for this many hours. |
 
-On Linux, install `openscap-scanner` for OS checks:
+On Linux, OS checks need `openscap-scanner`. The installer installs it with
+`sudo apt-get install -y openscap-scanner` when `oscap` is missing. With
+`SKIP_SUDOERS=1` or without `sudo` or `apt-get`, the installer only prints the
+command to run by hand:
 
 ```bash
 sudo apt install openscap-scanner
@@ -90,7 +93,8 @@ It does not parse `yarn.lock` or `Pipfile.lock` yet.
 runs on Linux regardless of the finding count. The pass reports a required
 reboot but does not reboot the machine.
 
-On macOS, Homebrew checks need Homebrew 7.0 or later. Run `brew vulns --json`
+On macOS, Homebrew checks need Homebrew 7.0 or later; the installer prints a
+one-line notice when `brew vulns` is missing. Run `brew vulns --json`
 to check the command directly. Homebrew coverage depends on the advisory data
 that OSV provides to Homebrew.
 
